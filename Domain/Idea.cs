@@ -7,6 +7,7 @@ namespace SeedForge.Domain
         public int SegmentId { get; set; }
         public string Premise { get; set; } = string.Empty;
         public string CorrelationId { get; set; } = string.Empty;
+        public string? ExtractionPromptVersion { get; set; }
         public DateTime CreatedAtUtc { get; set; }
     }
 }
