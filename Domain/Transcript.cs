@@ -4,7 +4,7 @@ namespace SeedForge.Domain
     public class Transcript
     {
         public int Id { get; set; }
-        public int VideoId { get; set; }
+        public int? VideoId { get; set; }
         public string PlainText { get; set; } = string.Empty;
         public string RawDatasetItemJson { get; set; } = string.Empty;
         public string? Title { get; set; }

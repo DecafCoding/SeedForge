@@ -1,0 +1,170 @@
+@page "/pipeline"
+@rendermode InteractiveServer
+@using Microsoft.EntityFrameworkCore
+@using SeedForge.Data
+@using SeedForge.Domain
+@using SeedForge.Pipeline
+@inject PipelineRunner Runner
+@inject ApplicationDbContext Db
+
+<PageTitle>Pipeline</PageTitle>
+
+<h1>Pipeline</h1>
+<p>Paste a transcript and run it through segmentation → extraction → scoring → concept building.</p>
+
+<div class="mb-3">
+    <label class="form-label" for="title">Title (optional)</label>
+    <input id="title" class="form-control" @bind="_title" disabled="@_busy" />
+</div>
+<div class="mb-3">
+    <label class="form-label" for="transcript">Transcript</label>
+    <textarea id="transcript" class="form-control" rows="10" @bind="_transcript" disabled="@_busy"></textarea>
+</div>
+<button class="btn btn-primary" disabled="@(_busy || string.IsNullOrWhiteSpace(_transcript))" @onclick="RunAsync">
+    @(_busy ? "Running…" : "Run pipeline")
+</button>
+
+@if (_error is not null)
+{
+    <div class="alert alert-danger mt-3">@_error</div>
+}
+
+@if (_result is not null)
+{
+    <hr />
+    <h2>Result</h2>
+    <p>
+        Correlation id: <code>@_result.CorrelationId</code> —
+        @_segments.Count segment(s), @_ideas.Count idea(s),
+        @_result.SurvivorIds.Count survivor(s), @_concepts.Count concept(s).
+    </p>
+
+    <h3>Segments</h3>
+    @foreach (var seg in _segments)
+    {
+        <details>
+            <summary>#@seg.OrdinalIndex (chars @seg.StartChar–@seg.EndChar)</summary>
+            <p>@seg.Text</p>
+        </details>
+    }
+
+    <h3>Ideas &amp; Scores</h3>
+    <table class="table table-sm">
+        <thead>
+            <tr>
+                <th>Premise</th><th>Novelty</th><th>Coherence</th><th>Sci-Fi</th><th>Formula</th><th>Survivor</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var idea in _ideas)
+            {
+                var score = _scores.Where(s => s.IdeaId == idea.Id).OrderByDescending(s => s.Id).FirstOrDefault();
+                <tr>
+                    <td>@idea.Premise</td>
+                    @if (score is not null)
+                    {
+                        <td>@score.Novelty.ToString("0.00")</td>
+                        <td>@score.Coherence.ToString("0.00")</td>
+                        <td>@score.SciFiPotential.ToString("0.00")</td>
+                        <td>@score.FormulaFit.ToString("0.00")</td>
+                        <td>@(score.PassedThreshold ? "✓" : "—")</td>
+                    }
+                    else
+                    {
+                        <td colspan="5"><em>not scored</em></td>
+                    }
+                </tr>
+            }
+        </tbody>
+    </table>
+
+    <h3>Concepts</h3>
+    @if (_concepts.Count == 0)
+    {
+        <p><em>No survivors produced concepts.</em></p>
+    }
+    @foreach (var concept in _concepts)
+    {
+        <div class="card mb-2">
+            <div class="card-body">
+                <h5 class="card-title">@concept.Title @(concept.IsActive ? "(active)" : "")</h5>
+                <p class="card-text">
+                    <strong>Genre:</strong> @concept.Genre<br />
+                    <strong>Theme:</strong> @concept.Theme<br />
+                    <strong>Hook:</strong> @concept.Hook<br />
+                    <strong>Conflict:</strong> @concept.Conflict<br />
+                    <strong>Central story question:</strong> @concept.CentralStoryQuestion
+                </p>
+            </div>
+        </div>
+    }
+
+    <h3>AI Trace</h3>
+    <table class="table table-sm">
+        <thead>
+            <tr>
+                <th>Stage</th><th>Slot</th><th>Model</th><th>Tokens</th><th>Latency</th><th>OK</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var call in _trace)
+            {
+                <tr>
+                    <td>@call.Stage</td>
+                    <td>@call.Slot</td>
+                    <td>@call.Model</td>
+                    <td>@call.TotalTokens</td>
+                    <td>@call.LatencyMs ms</td>
+                    <td>@(call.Success ? "✓" : "✗")</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private string _transcript = string.Empty;
+    private string? _title;
+    private bool _busy;
+    private string? _error;
+
+    private PipelineRunResult? _result;
+    private List<Segment> _segments = new();
+    private List<Idea> _ideas = new();
+    private List<IdeaScore> _scores = new();
+    private List<Concept> _concepts = new();
+    private List<AiCallLog> _trace = new();
+
+    private async Task RunAsync()
+    {
+        _busy = true;
+        _error = null;
+        _result = null;
+        try
+        {
+            var result = await Runner.RunAsync(_transcript, string.IsNullOrWhiteSpace(_title) ? null : _title);
+            await LoadResultAsync(result);
+            _result = result;
+        }
+        catch (Exception ex)
+        {
+            // A stage failure is already recorded in AiCallLog; surface a message rather than an unhandled exception.
+            _error = $"Pipeline run failed: {ex.Message}";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task LoadResultAsync(PipelineRunResult result)
+    {
+        _segments = await Db.Segments.Where(s => s.TranscriptId == result.TranscriptId)
+            .OrderBy(s => s.OrdinalIndex).ToListAsync();
+        _ideas = await Db.Ideas.Where(i => result.IdeaIds.Contains(i.Id)).ToListAsync();
+        _scores = await Db.IdeaScores.Where(s => result.IdeaIds.Contains(s.IdeaId)).ToListAsync();
+        _concepts = await Db.Concepts.Where(c => result.ConceptIds.Contains(c.Id)).ToListAsync();
+        _trace = await Db.AiCallLogs.Where(l => l.CorrelationId == result.CorrelationId)
+            .OrderBy(l => l.Id).ToListAsync();
+    }
+}
