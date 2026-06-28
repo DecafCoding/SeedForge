@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using SeedForge.Components;
 using SeedForge.Components.Account;
 using SeedForge.Data;
+using SeedForge.Services.Ai;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -37,6 +38,9 @@ builder.Services.AddIdentityCore<ApplicationUser>(options =>
     .AddDefaultTokenProviders();
 
 builder.Services.AddSingleton<IEmailSender<ApplicationUser>, IdentityNoOpEmailSender>();
+
+// AI plumbing: per-slot options, resolver, LLM client + call-logging decorator.
+builder.Services.AddAiServices(builder.Configuration);
 
 var app = builder.Build();
 
