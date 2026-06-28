@@ -10,7 +10,9 @@ The governing data rule: **sources are immutable** (`Transcript`, `Segment`, `Id
 
 ## Status
 
-Phase 0 (Foundation & Data Spine) is complete: the SQLite data model, the single `ApplicationDbContext`, startup auto-migration, the vertical-slice folder structure, and a build-enforced architecture test are in place. No pipeline, AI, or feature UI yet beyond the scaffolded template.
+Phase 0 (Foundation & Data Spine) is complete: the SQLite data model, the single `ApplicationDbContext`, startup auto-migration, the vertical-slice folder structure, and a build-enforced architecture test are in place.
+
+Phase 1 (LLM Client & Call Logging) is complete: a self-contained `LlmClient` (`Services/Ai/`) that talks to any OpenAI-compatible `/chat/completions` endpoint with free-text and strict `json_schema` structured calls, per-slot configuration (`Ai:Slots`), an `AiCallLogger` decorator that records one `AiCallLog` per call (tokens, latency, cost, correlation id), and a `/diagnostics` page to test each slot's connection. No pipeline or feature UI yet beyond the scaffolded template.
 
 ## Tech Stack
 
@@ -30,7 +32,8 @@ SeedForge/                     # project + git root (Solution: SeedForge.slnx)
 ├─ Services/                   # shared services (added in later phases)
 ├─ Workers/                    # background workers (added in later phases)
 └─ tests/
-   └─ SeedForge.ArchitectureTests/   # NetArchTest boundary rules
+   ├─ SeedForge.ArchitectureTests/   # NetArchTest boundary rules
+   └─ SeedForge.UnitTests/           # xUnit unit tests (AI plumbing, stubbed HTTP)
 ```
 
 Folders map to namespaces (`SeedForge.Domain`, `SeedForge.Data`, ...). Architecture is **vertical-slice**: no repository/UoW wrapper — handlers use the `DbContext` directly. A single `DbContext` (Identity + domain) keeps one migration stream.
@@ -84,3 +87,15 @@ Non-secret defaults ship in `appsettings.json`. Secrets are never committed — 
 ```bash
 dotnet user-secrets set "<Section>:<Key>" "<value>"
 ```
+
+## AI Configuration
+
+The pipeline's model calls are configured per **slot** under the `Ai:Slots` section of `appsettings.json`. There are five slots — `Seed`, `Extraction`, `Scoring`, `Concept`, `Conversation` — each binding to a connection (`BaseUrl`, `ApiKey`, `Model`, `TimeoutSeconds`, optional `Temperature`/`ReasoningEffort`). All slots default to the reference local rig (`http://192.168.50.102:8070`).
+
+A **blank** `BaseUrl` routes to hosted OpenAI (`https://api.openai.com/v1/`). Hosted API keys are **never committed** — override them via user-secrets, e.g.:
+
+```bash
+dotnet user-secrets set "Ai:Slots:Concept:ApiKey" "sk-..."
+```
+
+Every model call is recorded as one `AiCallLog` row (stage, slot, tokens, latency, estimated cost, correlation id). Use the **`/diagnostics`** page to test connectivity to each slot's endpoint.
