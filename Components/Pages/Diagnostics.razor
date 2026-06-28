@@ -1,0 +1,67 @@
+@page "/diagnostics"
+@rendermode InteractiveServer
+@using SeedForge.Domain
+@using SeedForge.Services.Ai
+@inject ConnectionTester ConnectionTester
+
+<PageTitle>Diagnostics</PageTitle>
+
+<h1>AI Diagnostics</h1>
+<p>Test connectivity to each model slot's configured endpoint.</p>
+
+<table class="table">
+    <thead>
+        <tr>
+            <th>Slot</th>
+            <th>Action</th>
+            <th>Result</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var slot in Enum.GetValues<ModelSlot>())
+        {
+            <tr>
+                <td>@slot</td>
+                <td>
+                    <button class="btn btn-primary btn-sm" disabled="@_busy" @onclick="() => TestAsync(slot)">
+                        @(_busy && _running == slot ? "Testing…" : "Test")
+                    </button>
+                </td>
+                <td>
+                    @if (_results.TryGetValue(slot, out var result))
+                    {
+                        @if (result.Ok)
+                        {
+                            <span class="text-success">OK (@result.LatencyMs ms)</span>
+                        }
+                        else
+                        {
+                            <span class="text-danger">Error: @result.Error</span>
+                        }
+                    }
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+@code {
+    private readonly Dictionary<ModelSlot, ConnectionResult> _results = new();
+    private bool _busy;
+    private ModelSlot? _running;
+
+    private async Task TestAsync(ModelSlot slot)
+    {
+        _busy = true;
+        _running = slot;
+        try
+        {
+            _results[slot] = await ConnectionTester.TestConnectionAsync(slot);
+        }
+        finally
+        {
+            _busy = false;
+            _running = null;
+        }
+    }
+}
