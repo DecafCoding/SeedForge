@@ -18,6 +18,8 @@ Phase 2 (The Pipeline, on a Pasted Transcript) is complete: the four pipeline st
 
 Phase 3 (Versioning, Regeneration & the Compare Loop) is complete: switchable, named **config profiles** (`ConfigProfile`) bundle the per-slot settings, with exactly one active — the `LlmOptionsResolver` is now DB-backed and resolves each slot from the active (or a chosen) profile, falling back to `appsettings` and filling a blank OpenAI key from user-secrets so secrets never live in the DB. Three rebuild operations reuse the existing slices without re-running upstream: **RegenerateConcept** (run-now rebuild of one concept with an optional profile override), **RescoreIdea** (appends a new score and applies the stale-not-deleted cascade), and **ReplayCall** (reissues a stored call's messages against a different config for a side-by-side A/B). A **`/config`** page switches the active profile and tests each slot, and a **`/concepts`** page browses an idea's score/concept version history with active/stale flags and the regenerate / rescore / replay actions.
 
+Phase 4 (Real Ingestion — Single Video) is complete: a YouTube URL becomes concepts end to end with no manual transcript. A typed **`ApifyClient`** (`Services/Apify/`) posts to the Apify `run-sync-get-dataset-items` endpoint for the `streamers~youtube-scraper` actor; **`ApifyIngestionService`** resolves the video id (via the shared `Services/YouTube/YouTubeUrl` helper), runs the actor, and parses the first dataset item defensively (subtitles / transcript / captions / segments) into transcript text + title + channel + the raw item + best-effort cost. The **IngestTranscript** slice (`Features/Ingestion/`) persists the immutable `Video` + `Transcript`, recording **Done / NoTranscript / Failed** distinctly (a captionless video is *not* a failure), idempotent on the YouTube id so an already-fetched video is never re-paid. `PipelineRunner` gains `RunFromTranscriptAsync` (the reusable four-stage core) and `RunFromUrlAsync` (ingest → run), and the **`/pipeline`** page accepts a YouTube URL alongside the paste-text path.
+
 ## Tech Stack
 
 - **.NET 10** / ASP.NET Core Blazor Web App (Interactive Server)
@@ -32,9 +34,9 @@ SeedForge/                     # project + git root (Solution: SeedForge.slnx)
 ├─ Components/                 # Blazor components + Identity account pages
 ├─ Data/                       # ApplicationDbContext, ApplicationUser, Migrations
 ├─ Domain/                     # POCO entities + enums (no EF dependency)
-├─ Features/                   # vertical slices (Segmentation, Extraction, Scoring, Concepts, Config, Observability)
+├─ Features/                   # vertical slices (Segmentation, Extraction, Scoring, Concepts, Config, Observability, Ingestion)
 ├─ Pipeline/                    # PipelineRunner orchestrator (driving adapter)
-├─ Services/                   # shared services (Ai/)
+├─ Services/                   # shared services (Ai/, Apify/, YouTube/)
 ├─ Workers/                    # background workers (added in later phases)
 └─ tests/
    ├─ SeedForge.ArchitectureTests/   # NetArchTest boundary rules
@@ -122,6 +124,16 @@ The **`/concepts`** page surfaces an idea's append-only history and three run-no
 - **Regenerate concept** — rebuild one concept against an optional profile override (a new active version is appended; the prior is flipped inactive — no upstream re-run).
 - **Re-score idea** — append a new `IdeaScore`; on a drop below threshold the idea's concepts are flagged stale (never deleted), cleared again on a pass.
 - **Replay** — reissue a stored call's messages against a chosen profile and compare the original and new outputs side by side (the original log is immutable; the replay writes a new `AiCallLog`).
+
+### Ingestion (Apify)
+
+Transcripts are fetched from YouTube via the Apify `streamers~youtube-scraper` actor. Non-secret defaults ship under the `Apify` section of `appsettings.json` (`BaseUrl`, `ActorId`, `TimeoutSeconds`); the **token is blank in source** and must be supplied via user-secrets:
+
+```bash
+dotnet user-secrets set "Apify:Token" "apify_api_..."
+```
+
+The token is sent as a query-string parameter. Paste a YouTube URL (or bare 11-char id) on the **`/pipeline`** page to fetch a transcript and run it through the engine. A real fetch **bills the Apify account** — every automated test uses a stubbed handler / fake service and never calls Apify.
 
 ### Pipeline Configuration
 

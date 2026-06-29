@@ -1,6 +1,7 @@
 using SeedForge.Features.Concepts;
 using SeedForge.Features.Config;
 using SeedForge.Features.Extraction;
+using SeedForge.Features.Ingestion;
 using SeedForge.Features.Observability;
 using SeedForge.Features.Scoring;
 using SeedForge.Features.Segmentation;
@@ -20,6 +21,9 @@ namespace SeedForge.Features
             services.AddScoped<ExtractIdeasHandler>();
             services.AddScoped<ScoreIdeasHandler>();
             services.AddScoped<BuildConceptHandler>();
+
+            // Ingestion slice (Phase 4): URL/id → persisted Video + Transcript with status.
+            services.AddScoped<IngestTranscriptHandler>();
 
             // Versioning / compare-loop operations (Phase 3): each co-located with the slice it reuses.
             services.AddScoped<ProfileService>();
