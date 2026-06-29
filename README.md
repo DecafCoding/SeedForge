@@ -20,6 +20,8 @@ Phase 3 (Versioning, Regeneration & the Compare Loop) is complete: switchable, n
 
 Phase 4 (Real Ingestion — Single Video) is complete: a YouTube URL becomes concepts end to end with no manual transcript. A typed **`ApifyClient`** (`Services/Apify/`) posts to the Apify `run-sync-get-dataset-items` endpoint for the `streamers~youtube-scraper` actor; **`ApifyIngestionService`** resolves the video id (via the shared `Services/YouTube/YouTubeUrl` helper), runs the actor, and parses the first dataset item defensively (subtitles / transcript / captions / segments) into transcript text + title + channel + the raw item + best-effort cost. The **IngestTranscript** slice (`Features/Ingestion/`) persists the immutable `Video` + `Transcript`, recording **Done / NoTranscript / Failed** distinctly (a captionless video is *not* a failure), idempotent on the YouTube id so an already-fetched video is never re-paid. `PipelineRunner` gains `RunFromTranscriptAsync` (the reusable four-stage core) and `RunFromUrlAsync` (ingest → run), and the **`/pipeline`** page accepts a YouTube URL alongside the paste-text path.
 
+Phase 5 (Queues & Workers — Unattended Runs) is complete: SeedForge now runs without you. Two durable, DB-backed queues (`Services/Queues/`) sit over the existing rows — a `Video` row *is* the video job, a `ConceptJob` row is the concept job — each with atomic claim (Pending→InProgress in a transaction), exponential **backoff** to a terminal `Failed` after `MaxAttempts`, pending-count, and **process-now** (jump the line + wake the worker). Two **`BackgroundService`** workers (`Workers/`) drain them on independent cadences: the **ProcessingWorker** ingests → segments → extracts → scores and **stops at the scoring seam**, enqueuing one `ConceptJob` per survivor (`Video` set `Done`, or `ProcessedNoIdeas` when zero survive — never built inline), while the **ConceptWorker** builds exactly one active `Concept` per job on its own cadence (honoring an optional profile/slot override), so a slow/paid Concept model never stalls the cheap local processing loop. Each worker is a singleton that opens a DI scope per tick and delegates to an extracted, unit-testable `ProcessOnceAsync`; a job error reschedules with backoff and never crashes the host. A `WorkerControl` singleton provides per-worker **pause/resume** and a wake signal. A bare **`/queues`** page shows pending counts + drain-time ETA with pause/resume, process-now, and URL enqueue. **Both workers start paused on boot** to avoid surprise Apify/model spend.
+
 ## Tech Stack
 
 - **.NET 10** / ASP.NET Core Blazor Web App (Interactive Server)
@@ -36,8 +38,8 @@ SeedForge/                     # project + git root (Solution: SeedForge.slnx)
 ├─ Domain/                     # POCO entities + enums (no EF dependency)
 ├─ Features/                   # vertical slices (Segmentation, Extraction, Scoring, Concepts, Config, Observability, Ingestion)
 ├─ Pipeline/                    # PipelineRunner orchestrator (driving adapter)
-├─ Services/                   # shared services (Ai/, Apify/, YouTube/)
-├─ Workers/                    # background workers (added in later phases)
+├─ Services/                   # shared services (Ai/, Apify/, YouTube/, Queues/)
+├─ Workers/                    # background workers (ProcessingWorker, ConceptWorker) + WorkerControl
 └─ tests/
    ├─ SeedForge.ArchitectureTests/   # NetArchTest boundary rules
    └─ SeedForge.UnitTests/           # xUnit unit tests (AI plumbing, stubbed HTTP)
@@ -144,3 +146,21 @@ The scoring threshold is configured under the `Pipeline` section of `appsettings
 ```
 
 An idea survives scoring when the mean of its four axes (Novelty, Coherence, SciFiPotential, FormulaFit) is at least `ScoreThreshold`. Only survivors are developed into concepts.
+
+### Queues & Workers
+
+Two background workers run inside the web app and drain durable, DB-backed queues so concepts accumulate unattended. They are configured under the `Workers` section of `appsettings.json`:
+
+```json
+"Workers": {
+  "ProcessingIntervalSeconds": 1800,
+  "ConceptIntervalSeconds": 60,
+  "MaxAttempts": 5,
+  "BackoffBaseSeconds": 30
+}
+```
+
+- `ProcessingIntervalSeconds` / `ConceptIntervalSeconds` — how often each worker wakes (a process-now or enqueue wakes it early).
+- `MaxAttempts` — failed jobs retry with exponential backoff (`BackoffBaseSeconds × 2^attempt`); after this many attempts a job becomes terminal `Failed`.
+
+**Both workers start paused on boot** (to avoid surprise Apify/model spend). Use the **`/queues`** page to see pending counts + drain-time ETA, resume/pause each worker, prioritize a specific item (process-now), and add a YouTube URL to the processing queue. The Processing worker stops at scoring and enqueues a concept job per survivor; the Concept worker develops them on its own cadence — so a slow Concept model never blocks processing. No automated test runs the timed host loop or hits Apify/the model.
