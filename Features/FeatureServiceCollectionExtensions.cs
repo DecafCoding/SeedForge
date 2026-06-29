@@ -1,5 +1,7 @@
 using SeedForge.Features.Concepts;
+using SeedForge.Features.Config;
 using SeedForge.Features.Extraction;
+using SeedForge.Features.Observability;
 using SeedForge.Features.Scoring;
 using SeedForge.Features.Segmentation;
 using SeedForge.Pipeline;
@@ -18,6 +20,12 @@ namespace SeedForge.Features
             services.AddScoped<ExtractIdeasHandler>();
             services.AddScoped<ScoreIdeasHandler>();
             services.AddScoped<BuildConceptHandler>();
+
+            // Versioning / compare-loop operations (Phase 3): each co-located with the slice it reuses.
+            services.AddScoped<ProfileService>();
+            services.AddScoped<RegenerateConceptHandler>();
+            services.AddScoped<RescoreIdeaHandler>();
+            services.AddScoped<ReplayCallHandler>();
 
             // Driving-adapter orchestrator that composes the four slices.
             services.AddScoped<PipelineRunner>();

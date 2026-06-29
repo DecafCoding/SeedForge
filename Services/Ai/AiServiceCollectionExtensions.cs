@@ -8,7 +8,8 @@ namespace SeedForge.Services.Ai
         public static IServiceCollection AddAiServices(this IServiceCollection services, IConfiguration config)
         {
             services.Configure<AiOptions>(config.GetSection("Ai"));
-            services.AddSingleton<LlmOptionsResolver>();
+            // Scoped: the resolver now reads ApplicationDbContext (active ConfigProfile) per call.
+            services.AddScoped<LlmOptionsResolver>();
             services.AddSingleton<CostEstimator>();
             services.AddSingleton<LlmClient>(); // raw client
             services.AddSingleton<ILlmClient>(sp => new AiCallLogger( // decorated: one AiCallLog per call
@@ -16,7 +17,8 @@ namespace SeedForge.Services.Ai
                 sp.GetRequiredService<IServiceScopeFactory>(),
                 sp.GetRequiredService<CostEstimator>(),
                 sp.GetRequiredService<ILogger<AiCallLogger>>()));
-            services.AddSingleton<ConnectionTester>();
+            // Scoped: consumes the scoped resolver (avoids a singleton→scoped captive dependency).
+            services.AddScoped<ConnectionTester>();
             return services;
         }
     }
