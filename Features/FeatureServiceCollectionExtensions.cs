@@ -1,3 +1,4 @@
+using SeedForge.Features.Browse;
 using SeedForge.Features.Concepts;
 using SeedForge.Features.Config;
 using SeedForge.Features.Discovery;
@@ -39,6 +40,9 @@ namespace SeedForge.Features
 
             // Cost & token dashboard (Phase 7): read-only aggregation over AiCallLog + Transcript.
             services.AddScoped<CostDashboard>();
+
+            // Browse pages (Phases 9–11): shared read-only projections over the entity graph.
+            services.AddScoped<BrowseQueries>();
 
             // Maintenance (Phase 8): one-shot backfill of video metadata from stored raw Apify items.
             services.AddScoped<BackfillVideoMetadataHandler>();
