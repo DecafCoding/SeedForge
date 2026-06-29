@@ -16,6 +16,7 @@ namespace SeedForge.Data
         public DbSet<Concept> Concepts => Set<Concept>();
         public DbSet<ConceptJob> ConceptJobs => Set<ConceptJob>();
         public DbSet<AiCallLog> AiCallLogs => Set<AiCallLog>();
+        public DbSet<ConfigProfile> ConfigProfiles => Set<ConfigProfile>();
 
         protected override void OnModelCreating(ModelBuilder builder)
         {
@@ -29,6 +30,12 @@ namespace SeedForge.Data
             // At most one active Concept per Idea (append-only with one active).
             builder.Entity<Concept>()
                 .HasIndex(c => c.IdeaId)
+                .IsUnique()
+                .HasFilter("\"IsActive\" = 1");
+
+            // At most one active ConfigProfile across the table (mirrors the Concept active-index pattern).
+            builder.Entity<ConfigProfile>()
+                .HasIndex(p => p.IsActive)
                 .IsUnique()
                 .HasFilter("\"IsActive\" = 1");
 

@@ -1,5 +1,6 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using SeedForge.Data;
 using SeedForge.Domain;
 using SeedForge.Services.Ai;
@@ -15,6 +16,7 @@ namespace SeedForge.UnitTests.Fakes
     {
         private readonly SqliteConnection _connection;
         private readonly DbContextOptions<ApplicationDbContext> _dbOptions;
+        private readonly ApplicationDbContext _resolverDb;
 
         public SliceTestHarness()
         {
@@ -33,7 +35,10 @@ namespace SeedForge.UnitTests.Fakes
                 aiOptions.Slots[slot.ToString()] =
                     new LlmOptions { BaseUrl = "http://rig", ApiKey = "local", Model = $"{slot}-model" };
             }
-            Resolver = new LlmOptionsResolver(new TestOptionsMonitor<AiOptions>(aiOptions));
+            // No profiles seeded ⇒ the resolver falls back to these appsettings, preserving Phase 2 behavior.
+            _resolverDb = NewDb();
+            Resolver = new LlmOptionsResolver(
+                _resolverDb, new TestOptionsMonitor<AiOptions>(aiOptions), new ConfigurationBuilder().Build());
         }
 
         public LlmOptionsResolver Resolver { get; }
@@ -86,6 +91,10 @@ namespace SeedForge.UnitTests.Fakes
             return idea.Id;
         }
 
-        public void Dispose() => _connection.Dispose();
+        public void Dispose()
+        {
+            _resolverDb.Dispose();
+            _connection.Dispose();
+        }
     }
 }
