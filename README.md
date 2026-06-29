@@ -129,6 +129,10 @@ OpenAI keys are **never stored in a profile row**. When a profile's OpenAI slot 
 dotnet user-secrets set "Ai:OpenAiApiKey" "sk-..."
 ```
 
+### Failover
+
+Optional, **off by default**: when a model endpoint is unreachable, the failed call is retried **once** against another profile's matching slot — e.g. fall back to **All OpenAI** when the local rig is down. Enable it on the **`/config`** page (a checkbox + a fallback-profile picker). Only **connectivity** failures trigger it — connection refused, request timeout, or HTTP 5xx; a 4xx or a bad/unparseable response does **not** (the model answered, so a retry would only double-spend). The fallback attempt is recorded as its own `AiCallLog`, so the per-video AI trace and cost dashboard show both the failed local call and the successful fallback. If the fallback resolves to the same endpoint as the primary, the retry is skipped. When failover is off (or also fails), the call surfaces its error and the existing worker backoff/retry applies as before.
+
 ### Versioning & the Compare Loop
 
 The **`/concepts`** page surfaces an idea's append-only history and three run-now actions:

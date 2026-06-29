@@ -17,6 +17,7 @@ namespace SeedForge.Data
         public DbSet<ConceptJob> ConceptJobs => Set<ConceptJob>();
         public DbSet<AiCallLog> AiCallLogs => Set<AiCallLog>();
         public DbSet<ConfigProfile> ConfigProfiles => Set<ConfigProfile>();
+        public DbSet<FailoverSetting> FailoverSettings => Set<FailoverSetting>();
 
         protected override void OnModelCreating(ModelBuilder builder)
         {

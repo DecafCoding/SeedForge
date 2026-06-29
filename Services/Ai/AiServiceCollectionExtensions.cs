@@ -12,11 +12,17 @@ namespace SeedForge.Services.Ai
             services.AddScoped<LlmOptionsResolver>();
             services.AddSingleton<CostEstimator>();
             services.AddSingleton<LlmClient>(); // raw client
-            services.AddSingleton<ILlmClient>(sp => new AiCallLogger( // decorated: one AiCallLog per call
+            // Decorator chain (outer → inner): FailoverLlmClient → AiCallLogger → LlmClient. The logger writes one
+            // AiCallLog per attempt; failover retries a connectivity failure once on the fallback profile's slot.
+            services.AddSingleton<AiCallLogger>(sp => new AiCallLogger(
                 sp.GetRequiredService<LlmClient>(),
                 sp.GetRequiredService<IServiceScopeFactory>(),
                 sp.GetRequiredService<CostEstimator>(),
                 sp.GetRequiredService<ILogger<AiCallLogger>>()));
+            services.AddSingleton<ILlmClient>(sp => new FailoverLlmClient(
+                sp.GetRequiredService<AiCallLogger>(),
+                sp.GetRequiredService<IServiceScopeFactory>(),
+                sp.GetRequiredService<ILogger<FailoverLlmClient>>()));
             // Scoped: consumes the scoped resolver (avoids a singleton→scoped captive dependency).
             services.AddScoped<ConnectionTester>();
             return services;

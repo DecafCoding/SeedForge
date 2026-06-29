@@ -90,11 +90,11 @@ namespace SeedForge.UnitTests
         }
     }
 
-    /// <summary>Proves the DI composition resolves ILlmClient to the AiCallLogger decorator with scope validation on.</summary>
+    /// <summary>Proves the DI composition resolves ILlmClient to the failover decorator (over the logger) with scope validation on.</summary>
     public class CompositionTests
     {
         [Fact]
-        public void ILlmClient_resolves_to_AiCallLogger_decorator()
+        public void ILlmClient_resolves_to_FailoverLlmClient_over_AiCallLogger()
         {
             var config = new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build();
             var services = new ServiceCollection();
@@ -111,7 +111,8 @@ namespace SeedForge.UnitTests
             });
 
             var client = provider.GetRequiredService<ILlmClient>();
-            Assert.IsType<AiCallLogger>(client);
+            Assert.IsType<FailoverLlmClient>(client);                 // outermost decorator
+            Assert.IsType<AiCallLogger>(provider.GetRequiredService<AiCallLogger>()); // still registered as the inner
         }
     }
 }
