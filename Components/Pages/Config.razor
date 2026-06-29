@@ -9,7 +9,12 @@
 <PageTitle>Config Profiles</PageTitle>
 
 <h1>Config Profiles</h1>
-<p>Switch the active model-configuration profile and test connectivity per slot. Exactly one profile is active.</p>
+<p>Manage named model-configuration profiles, switch the active one, and test connectivity per slot. Exactly one profile is active. API keys left blank resolve from user-secrets — they are never displayed or stored here.</p>
+
+@if (_error is not null)
+{
+    <div class="alert alert-danger">@_error</div>
+}
 
 @if (_profiles is null)
 {
@@ -34,16 +39,64 @@ else
                     <td>
                         @if (!profile.IsActive)
                         {
-                            <button class="btn btn-primary btn-sm" disabled="@_busy"
+                            <button class="btn btn-primary btn-sm me-1" disabled="@_busy"
                                     @onclick="() => SetActiveAsync(profile.Id)">
                                 @(_busy && _activating == profile.Id ? "Switching…" : "Make active")
                             </button>
                         }
+                        <button class="btn btn-outline-secondary btn-sm" disabled="@_busy"
+                                @onclick="() => BeginEdit(profile)">Edit</button>
                     </td>
                 </tr>
             }
         </tbody>
     </table>
+
+    <button class="btn btn-success btn-sm mb-3" disabled="@_busy" @onclick="BeginNew">+ New profile</button>
+
+    @if (_editing is not null)
+    {
+        <div class="card mb-4">
+            <div class="card-body">
+                <h2 class="card-title">@(_editing.Id == 0 ? "New profile" : $"Edit “{_editing.Name}”")</h2>
+                <div class="mb-3" style="max-width:30rem">
+                    <label class="form-label">Profile name</label>
+                    <input class="form-control" @bind="_editing.Name" disabled="@_busy" />
+                </div>
+
+                @foreach (var slot in Enum.GetValues<ModelSlot>())
+                {
+                    var opts = _editSlots[slot.ToString()];
+                    <fieldset class="border rounded p-2 mb-2">
+                        <legend class="fs-6">@slot</legend>
+                        <div class="row g-2">
+                            <div class="col-md-4">
+                                <label class="form-label small">Base URL</label>
+                                <input class="form-control form-control-sm" @bind="opts.BaseUrl" disabled="@_busy" />
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small">Model</label>
+                                <input class="form-control form-control-sm" @bind="opts.Model" disabled="@_busy" />
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label small">Timeout (s)</label>
+                                <input class="form-control form-control-sm" type="number" @bind="opts.TimeoutSeconds" disabled="@_busy" />
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small">API key</label>
+                                <input class="form-control form-control-sm" type="password" placeholder="from secrets" @bind="opts.ApiKey" disabled="@_busy" />
+                            </div>
+                        </div>
+                    </fieldset>
+                }
+
+                <button class="btn btn-primary btn-sm me-1" disabled="@(_busy || string.IsNullOrWhiteSpace(_editing.Name))" @onclick="SaveEdit">
+                    @(_busy && _action == "save" ? "Saving…" : "Save profile")
+                </button>
+                <button class="btn btn-secondary btn-sm" disabled="@_busy" @onclick="() => _editing = null">Cancel</button>
+            </div>
+        </div>
+    }
 
     <h2>Test connections</h2>
     <p>Each slot resolves against the currently active profile.</p>
@@ -91,6 +144,11 @@ else
     private bool _busy;
     private int? _activating;
     private ModelSlot? _testing;
+    private string? _action;
+    private string? _error;
+
+    private ConfigProfile? _editing;
+    private Dictionary<string, LlmOptions> _editSlots = new();
 
     protected override async Task OnInitializedAsync() => await LoadAsync();
 
@@ -100,15 +158,88 @@ else
     {
         _busy = true;
         _activating = id;
+        _error = null;
         try
         {
             await Profiles.SetActiveAsync(id);
             await LoadAsync();
         }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
         finally
         {
             _busy = false;
             _activating = null;
+        }
+    }
+
+    private void BeginNew()
+    {
+        _editing = new ConfigProfile { Name = "" };
+        _editSlots = BlankSlots();
+    }
+
+    private void BeginEdit(ConfigProfile profile)
+    {
+        // Edit a fresh copy so a cancel leaves the list untouched.
+        _editing = new ConfigProfile
+        {
+            Id = profile.Id,
+            Name = profile.Name,
+            IsActive = profile.IsActive,
+            CreatedAtUtc = profile.CreatedAtUtc,
+            SlotsJson = profile.SlotsJson,
+        };
+
+        var stored = ProfileSlots.Deserialize(profile.SlotsJson);
+        _editSlots = BlankSlots();
+        foreach (var slot in Enum.GetValues<ModelSlot>())
+        {
+            if (stored.TryGetValue(slot.ToString(), out var o))
+            {
+                _editSlots[slot.ToString()] = new LlmOptions
+                {
+                    BaseUrl = o.BaseUrl,
+                    Model = o.Model,
+                    TimeoutSeconds = o.TimeoutSeconds,
+                    // Never surface a stored key; leave blank so it resolves from user-secrets unless re-entered.
+                    ApiKey = string.Empty,
+                };
+            }
+        }
+    }
+
+    private static Dictionary<string, LlmOptions> BlankSlots()
+    {
+        var d = new Dictionary<string, LlmOptions>();
+        foreach (var slot in Enum.GetValues<ModelSlot>())
+            d[slot.ToString()] = new LlmOptions { TimeoutSeconds = 300 };
+        return d;
+    }
+
+    private async Task SaveEdit()
+    {
+        if (_editing is null) return;
+        _busy = true;
+        _action = "save";
+        _error = null;
+        try
+        {
+            _editing.SlotsJson = ProfileSlots.Serialize(_editSlots);
+            await Profiles.SaveAsync(_editing);
+            _editing = null;
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+            _action = null;
         }
     }
 

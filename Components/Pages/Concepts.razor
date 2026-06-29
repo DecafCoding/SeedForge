@@ -65,6 +65,27 @@
                 </button>
             </div>
 
+            <h3>Lineage</h3>
+            <p class="small text-muted mb-3">
+                @if (_lineageVideo is not null)
+                {
+                    <span>Video <a href="@_lineageVideo.Url" target="_blank">#@_lineageVideo.Id @(_lineageVideo.Title ?? _lineageVideo.YouTubeVideoId)</a> → </span>
+                }
+                @if (_lineageTranscript is not null)
+                {
+                    <span>Transcript #@_lineageTranscript.Id @(_lineageTranscript.Title is null ? "" : $"({_lineageTranscript.Title})") → </span>
+                }
+                @if (_lineageSegment is not null)
+                {
+                    <span>Segment #@_lineageSegment.Id [@_lineageSegment.StartChar–@_lineageSegment.EndChar] → </span>
+                }
+                <span>Idea #@_selectedIdeaId</span>
+                @if (_lineageVideo is null && _lineageTranscript is null)
+                {
+                    <em> (pasted transcript — no source video)</em>
+                }
+            </p>
+
             <h3>Score history</h3>
             <table class="table table-sm">
                 <thead>
@@ -119,6 +140,34 @@
                 </div>
             }
 
+            @if (_concepts.Count >= 2)
+            {
+                <h3>Compare versions</h3>
+                <div class="d-flex gap-2 mb-2">
+                    <select class="form-select w-auto" @bind="_compareAId">
+                        <option value="">version A…</option>
+                        @foreach (var c in _concepts)
+                        {
+                            <option value="@c.Id">#@c.Id @c.Title</option>
+                        }
+                    </select>
+                    <select class="form-select w-auto" @bind="_compareBId">
+                        <option value="">version B…</option>
+                        @foreach (var c in _concepts)
+                        {
+                            <option value="@c.Id">#@c.Id @c.Title</option>
+                        }
+                    </select>
+                </div>
+                @if (CompareA is not null && CompareB is not null)
+                {
+                    <div class="row">
+                        <div class="col-md-6">@RenderConceptDetail(CompareA)</div>
+                        <div class="col-md-6">@RenderConceptDetail(CompareB)</div>
+                    </div>
+                }
+            }
+
             <h3>Stored calls (replay)</h3>
             @if (_calls.Count == 0)
             {
@@ -137,10 +186,11 @@
                             <td>@call.Slot</td>
                             <td>@call.Model</td>
                             <td>
-                                <button class="btn btn-outline-primary btn-sm" disabled="@_busy"
+                                <button class="btn btn-outline-primary btn-sm me-1" disabled="@_busy"
                                         @onclick="() => ReplayAsync(call.Id, call.Slot)">
                                     @(_busy && _action == "replay" && _replayingId == call.Id ? "Replaying…" : "Replay vs profile")
                                 </button>
+                                <a class="btn btn-outline-secondary btn-sm" href="@($"replay?logId={call.Id}")">Open in Replay</a>
                             </td>
                         </tr>
                     }
@@ -176,6 +226,17 @@
     private List<AiCallLog> _calls = new();
     private ReplayResult? _replayResult;
 
+    // Lineage: Concept → Idea → Segment → Transcript → Video
+    private Segment? _lineageSegment;
+    private Transcript? _lineageTranscript;
+    private Video? _lineageVideo;
+
+    // Side-by-side compare of two concept versions
+    private string? _compareAId;
+    private string? _compareBId;
+    private Concept? CompareA => _concepts.FirstOrDefault(c => c.Id.ToString() == _compareAId);
+    private Concept? CompareB => _concepts.FirstOrDefault(c => c.Id.ToString() == _compareBId);
+
     private bool _busy;
     private string? _action;
     private int? _replayingId;
@@ -204,6 +265,26 @@
         _calls = await Db.AiCallLogs
             .Where(l => l.RelatedEntityType == nameof(Idea) && l.RelatedEntityId == ideaId)
             .OrderByDescending(l => l.Id).ToListAsync();
+        _compareAId = null;
+        _compareBId = null;
+        await LoadLineageAsync(ideaId);
+    }
+
+    private async Task LoadLineageAsync(int ideaId)
+    {
+        _lineageSegment = null;
+        _lineageTranscript = null;
+        _lineageVideo = null;
+
+        var idea = await Db.Ideas.FirstOrDefaultAsync(i => i.Id == ideaId);
+        if (idea is null) return;
+        _lineageSegment = await Db.Segments.FirstOrDefaultAsync(s => s.Id == idea.SegmentId);
+        if (_lineageSegment is null) return;
+        _lineageTranscript = await Db.Transcripts.FirstOrDefaultAsync(t => t.Id == _lineageSegment.TranscriptId);
+        if (_lineageTranscript?.VideoId is int videoId)
+        {
+            _lineageVideo = await Db.Videos.FirstOrDefaultAsync(v => v.Id == videoId);
+        }
     }
 
     private async Task RegenerateAsync()
@@ -260,4 +341,31 @@
 
     private static string Truncate(string text, int max) =>
         text.Length <= max ? text : text[..max] + "…";
+
+    private RenderFragment RenderConceptDetail(Concept c) => __builder =>
+    {
+        <div class="card mb-2 @(c.IsStale ? "border-warning" : "")">
+            <div class="card-body">
+                <h5 class="card-title">
+                    #@c.Id @c.Title
+                    @if (c.IsActive)
+                    {
+                        <span class="badge bg-success">active</span>
+                    }
+                    @if (c.IsStale)
+                    {
+                        <span class="badge bg-warning text-dark">stale</span>
+                    }
+                </h5>
+                <p class="card-text">
+                    <strong>Genre:</strong> @c.Genre<br />
+                    <strong>Theme:</strong> @c.Theme<br />
+                    <strong>Hook:</strong> @c.Hook<br />
+                    <strong>Conflict:</strong> @c.Conflict<br />
+                    <strong>Central story question:</strong> @c.CentralStoryQuestion<br />
+                    <small class="text-muted">Model: @c.Model · @c.CreatedAtUtc.ToString("u")</small>
+                </p>
+            </div>
+        </div>
+    };
 }

@@ -24,6 +24,8 @@ Phase 6 (Discovery — Close the Loop) is complete: an upload on a followed chan
 
 Phase 5 (Queues & Workers — Unattended Runs) is complete: SeedForge now runs without you. Two durable, DB-backed queues (`Services/Queues/`) sit over the existing rows — a `Video` row *is* the video job, a `ConceptJob` row is the concept job — each with atomic claim (Pending→InProgress in a transaction), exponential **backoff** to a terminal `Failed` after `MaxAttempts`, pending-count, and **process-now** (jump the line + wake the worker). Two **`BackgroundService`** workers (`Workers/`) drain them on independent cadences: the **ProcessingWorker** ingests → segments → extracts → scores and **stops at the scoring seam**, enqueuing one `ConceptJob` per survivor (`Video` set `Done`, or `ProcessedNoIdeas` when zero survive — never built inline), while the **ConceptWorker** builds exactly one active `Concept` per job on its own cadence (honoring an optional profile/slot override), so a slow/paid Concept model never stalls the cheap local processing loop. Each worker is a singleton that opens a DI scope per tick and delegates to an extracted, unit-testable `ProcessOnceAsync`; a job error reschedules with backoff and never crashes the host. A `WorkerControl` singleton provides per-worker **pause/resume** and a wake signal. A bare **`/queues`** page shows pending counts + drain-time ETA with pause/resume, process-now, and URL enqueue. **Both workers start paused on boot** to avoid surprise Apify/model spend.
 
+Phase 7 (Blazor UI & Operability) is complete — the final phase: the throwaway harness pages are consolidated into one coherent operational surface and the one genuinely new capability, the **cost & token dashboard**, is added. A read-only `CostDashboard` aggregation service (`Features/Observability/`) groups `AiCallLog` token usage + estimated cost **per stage** and **per provider** (local rig vs each hosted model), sums **Apify compute units** from transcripts, and applies a date filter — materializing then grouping in memory to sidestep SQLite `GroupBy` translation limits. A new **`/dashboard`** page surfaces those aggregates with a window selector; a consistent app shell + nav (Counter/Weather demo pages removed) reaches every route, and **`/`** is now a live overview (queue depths, active/stale concept counts, channels followed, recent concepts). The bare pages are polished into final form: **`/queues`** gains per-worker (Processing/Concept/Discovery) item-state tables (incl. `NoTranscript`, `Processed · 0 ideas`, `Failed` + attempts) over a pure, unit-tested `QueueEta` drain-time helper; **`/concepts`** adds full lineage (Concept → Idea → Segment → Transcript → Video) and side-by-side version compare; **`/config`** adds create/edit of a profile's five slots (keys never displayed/stored — blank ⇒ user-secrets); and a dedicated **`/replay`** page A/Bs a stored call against a chosen profile, original vs new, writing a new log and leaving the original untouched. No backend behavior changed — the phase is read-only queries + existing Phase 1–6 slice calls, validated by booting the app and asserting every route returns 200.
+
 ## Tech Stack
 
 - **.NET 10** / ASP.NET Core Blazor Web App (Interactive Server)
@@ -177,3 +179,16 @@ dotnet user-secrets set "YouTube:ApiKey" "AIza..."
 ```
 
 The Discovery worker also **starts paused on boot** and runs on `Workers:DiscoveryIntervalSeconds` (default daily). Use the **`/channels`** page to add a channel (a `UC…` id, a `/channel/` URL, or an `@handle`), list / remove channels, resume the worker, or **poll now** for an on-demand poll. A poll lists each channel's recent uploads, enqueues only the ids with no existing `Video` row to the processing queue, and stamps `LastPolledUtc` — no transcript or AI work. Every automated test stubs the YouTube API; a real poll consumes YouTube quota.
+
+### UI & Operability
+
+The consolidated operational surface lets you run, monitor, and re-tune the whole engine without touching code. The app shell's navigation reaches every surface:
+
+- **`/`** — home overview: video/concept queue depths, active & stale concept counts, channels followed, and recent concepts.
+- **`/dashboard`** — **cost & token dashboard**: tokens + estimated cost aggregated **per stage** and **per provider** (local runs report tokens at cost 0; each hosted model separates out), grand totals, and **Apify compute units**, over a selectable window (default 30 days). Empty data renders zeros, not an error.
+- **`/queues`** — per-worker (Processing / Concept / Discovery) pending counts, drain-time ETA, pause/resume, process-now, and recent-item state tables.
+- **`/concepts`** — version history, active/stale flags, full lineage, side-by-side version compare, and the regenerate / rescore / replay actions.
+- **`/config`** — manage profiles (create/edit the five slots, set active) and per-slot test-connection.
+- **`/replay`** — A/B a stored call against a chosen profile, original vs new side by side.
+
+The dashboard aggregation is read-only and groups in memory (small single-user data volumes), so it never fights EF/SQLite `GroupBy` translation.

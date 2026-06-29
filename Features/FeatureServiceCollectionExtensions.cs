@@ -36,6 +36,9 @@ namespace SeedForge.Features
             services.AddScoped<RescoreIdeaHandler>();
             services.AddScoped<ReplayCallHandler>();
 
+            // Cost & token dashboard (Phase 7): read-only aggregation over AiCallLog + Transcript.
+            services.AddScoped<CostDashboard>();
+
             // Driving-adapter orchestrator that composes the four slices.
             services.AddScoped<PipelineRunner>();
 

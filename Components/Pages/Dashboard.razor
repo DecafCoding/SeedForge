@@ -1,0 +1,136 @@
+@page "/dashboard"
+@rendermode InteractiveServer
+@using SeedForge.Features.Observability
+@inject CostDashboard Costs
+
+<PageTitle>Cost &amp; Token Dashboard</PageTitle>
+
+<h1>Cost &amp; Token Dashboard</h1>
+<p>Token usage and estimated cost per stage and per provider, plus Apify compute units. Local runs report tokens with a cost of 0; a hosted model separates out in the provider view.</p>
+
+<div class="d-flex align-items-center gap-2 mb-3">
+    <label class="form-label mb-0">Window:</label>
+    <select class="form-select w-auto" @bind="_days" @bind:after="ReloadAsync" disabled="@_busy">
+        <option value="7">Last 7 days</option>
+        <option value="30">Last 30 days</option>
+        <option value="90">Last 90 days</option>
+        <option value="3650">All time</option>
+    </select>
+    @if (_busy)
+    {
+        <span class="text-muted">Loading…</span>
+    }
+</div>
+
+@if (_totals is not null)
+{
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <div class="card text-center"><div class="card-body">
+                <h6 class="text-muted">Calls</h6><h3>@_totals.Calls</h3>
+            </div></div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center"><div class="card-body">
+                <h6 class="text-muted">Total tokens</h6><h3>@_totals.TotalTokens.ToString("N0")</h3>
+            </div></div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center"><div class="card-body">
+                <h6 class="text-muted">Estimated cost</h6><h3>@_totals.EstimatedCost.ToString("C4")</h3>
+            </div></div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center"><div class="card-body">
+                <h6 class="text-muted">Apify units</h6><h3>@_apifyUnits.ToString("0.####")</h3>
+            </div></div>
+        </div>
+    </div>
+
+    <h2>Per stage</h2>
+    <table class="table table-sm">
+        <thead>
+            <tr><th>Stage</th><th class="text-end">Calls</th><th class="text-end">Prompt</th><th class="text-end">Completion</th><th class="text-end">Total tokens</th><th class="text-end">Est. cost</th></tr>
+        </thead>
+        <tbody>
+            @if (_perStage!.Count == 0)
+            {
+                <tr><td colspan="6"><em>No calls in this window.</em></td></tr>
+            }
+            @foreach (var s in _perStage!)
+            {
+                <tr>
+                    <td>@s.Stage</td>
+                    <td class="text-end">@s.Calls</td>
+                    <td class="text-end">@s.PromptTokens.ToString("N0")</td>
+                    <td class="text-end">@s.CompletionTokens.ToString("N0")</td>
+                    <td class="text-end">@s.TotalTokens.ToString("N0")</td>
+                    <td class="text-end">@s.EstimatedCost.ToString("C4")</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+
+    <h2>Per provider</h2>
+    <table class="table table-sm">
+        <thead>
+            <tr><th>Provider</th><th class="text-end">Calls</th><th class="text-end">Prompt</th><th class="text-end">Completion</th><th class="text-end">Total tokens</th><th class="text-end">Est. cost</th></tr>
+        </thead>
+        <tbody>
+            @if (_perProvider!.Count == 0)
+            {
+                <tr><td colspan="6"><em>No calls in this window.</em></td></tr>
+            }
+            @foreach (var p in _perProvider!)
+            {
+                <tr>
+                    <td>
+                        @p.Provider
+                        @if (p.IsLocal)
+                        {
+                            <span class="badge bg-secondary">local</span>
+                        }
+                    </td>
+                    <td class="text-end">@p.Calls</td>
+                    <td class="text-end">@p.PromptTokens.ToString("N0")</td>
+                    <td class="text-end">@p.CompletionTokens.ToString("N0")</td>
+                    <td class="text-end">@p.TotalTokens.ToString("N0")</td>
+                    <td class="text-end">@p.EstimatedCost.ToString("C4")</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+else
+{
+    <p><em>Loading…</em></p>
+}
+
+@code {
+    private int _days = 30; // bound as string from the <select>; int binding parses fine
+    private bool _busy;
+
+    private IReadOnlyList<StageCost>? _perStage;
+    private IReadOnlyList<ProviderCost>? _perProvider;
+    private CostTotals? _totals;
+    private double _apifyUnits;
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        _busy = true;
+        try
+        {
+            var fromUtc = DateTime.UtcNow.AddDays(-_days);
+            _perStage = await Costs.PerStageAsync(fromUtc);
+            _perProvider = await Costs.PerProviderAsync(fromUtc);
+            _totals = await Costs.TotalsAsync(fromUtc);
+            _apifyUnits = await Costs.ApifyCostAsync(fromUtc);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

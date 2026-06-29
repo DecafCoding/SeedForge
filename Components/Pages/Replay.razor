@@ -1,0 +1,180 @@
+@page "/replay"
+@rendermode InteractiveServer
+@using Microsoft.EntityFrameworkCore
+@using SeedForge.Data
+@using SeedForge.Domain
+@using SeedForge.Features.Config
+@using SeedForge.Features.Observability
+@inject ApplicationDbContext Db
+@inject ProfileService Profiles
+@inject ReplayCallHandler ReplayHandler
+
+<PageTitle>Replay A/B</PageTitle>
+
+<h1>Replay A/B</h1>
+<p>Re-run a stored AI call against a different profile and compare the original output with the new one, side by side. The replay writes a fresh log; the original call is never modified.</p>
+
+@if (_error is not null)
+{
+    <div class="alert alert-danger">@_error</div>
+}
+
+<div class="row mb-3">
+    <div class="col-md-4">
+        <label class="form-label">Filter by stage</label>
+        <input class="form-control form-control-sm" placeholder="(any)" @bind="_stageFilter" @bind:after="ReloadAsync" disabled="@_busy" />
+    </div>
+    <div class="col-md-4">
+        <label class="form-label">Filter by correlation id</label>
+        <input class="form-control form-control-sm" placeholder="(any)" @bind="_correlationFilter" @bind:after="ReloadAsync" disabled="@_busy" />
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-5">
+        <h2>Recent calls</h2>
+        @if (_logs.Count == 0)
+        {
+            <p><em>No stored calls match.</em></p>
+        }
+        <div class="list-group" style="max-height:30rem; overflow:auto">
+            @foreach (var log in _logs)
+            {
+                <button class="list-group-item list-group-item-action @(log.Id == _selected?.Id ? "active" : "")"
+                        disabled="@_busy" @onclick="() => Select(log.Id)">
+                    <div class="d-flex justify-content-between">
+                        <span>#@log.Id · @log.Stage</span>
+                        <small>@(log.Success ? "" : "⚠ ")@log.Model</small>
+                    </div>
+                    <small class="@(log.Id == _selected?.Id ? "" : "text-muted")">@log.Slot · @log.CreatedAtUtc.ToString("u")</small>
+                </button>
+            }
+        </div>
+    </div>
+
+    <div class="col-md-7">
+        @if (_selected is null)
+        {
+            <p><em>Select a stored call to replay.</em></p>
+        }
+        else
+        {
+            <h2>Call #@_selected.Id</h2>
+            <div class="d-flex align-items-end gap-2 mb-3 flex-wrap">
+                <div>
+                    <label class="form-label mb-0">Target slot</label>
+                    <select class="form-select form-select-sm w-auto" @bind="_targetSlot" disabled="@_busy">
+                        @foreach (var slot in Enum.GetValues<ModelSlot>())
+                        {
+                            <option value="@slot">@slot</option>
+                        }
+                    </select>
+                </div>
+                <div>
+                    <label class="form-label mb-0">Profile</label>
+                    <select class="form-select form-select-sm w-auto" @bind="_profileId" disabled="@_busy">
+                        <option value="">(active profile)</option>
+                        @foreach (var p in _profiles)
+                        {
+                            <option value="@p.Id">@p.Name @(p.IsActive ? "(active)" : "")</option>
+                        }
+                    </select>
+                </div>
+                <button class="btn btn-primary btn-sm" disabled="@(_busy || !_hasActiveProfile)" @onclick="RunReplay">
+                    @(_busy ? "Replaying…" : "Replay")
+                </button>
+            </div>
+
+            @if (!_hasActiveProfile)
+            {
+                <div class="alert alert-warning">No active profile configured. Set one on the <a href="config">Config</a> page first.</div>
+            }
+
+            @if (_result is null)
+            {
+                <h5>Stored response (@_selected.Model)</h5>
+                <pre class="border p-2">@_selected.RawResponse</pre>
+            }
+            else
+            {
+                <div class="row">
+                    <div class="col-md-6">
+                        <h5>Original (@_result.OriginalModel)</h5>
+                        <pre class="border p-2">@_result.OriginalResponse</pre>
+                    </div>
+                    <div class="col-md-6">
+                        <h5>Replay (@_result.NewModel)</h5>
+                        <pre class="border p-2">@_result.NewResponse</pre>
+                    </div>
+                </div>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    [SupplyParameterFromQuery(Name = "logId")]
+    public int? LogId { get; set; }
+
+    private string? _stageFilter;
+    private string? _correlationFilter;
+    private List<AiCallLog> _logs = new();
+    private List<ConfigProfile> _profiles = new();
+    private bool _hasActiveProfile;
+
+    private AiCallLog? _selected;
+    private ModelSlot _targetSlot;
+    private string? _profileId; // bound as string from the <select>
+    private ReplayResult? _result;
+
+    private bool _busy;
+    private string? _error;
+
+    private int? ProfileIdValue => int.TryParse(_profileId, out var id) ? id : null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _profiles = await Profiles.ListAsync();
+        _hasActiveProfile = _profiles.Any(p => p.IsActive);
+        await ReloadAsync();
+        if (LogId is int id) await Select(id);
+    }
+
+    private async Task ReloadAsync()
+    {
+        var query = Db.AiCallLogs.AsQueryable();
+        if (!string.IsNullOrWhiteSpace(_stageFilter))
+            query = query.Where(l => l.Stage.Contains(_stageFilter));
+        if (!string.IsNullOrWhiteSpace(_correlationFilter))
+            query = query.Where(l => l.CorrelationId.Contains(_correlationFilter));
+        _logs = await query.OrderByDescending(l => l.Id).Take(50).ToListAsync();
+    }
+
+    private async Task Select(int id)
+    {
+        _result = null;
+        _error = null;
+        _selected = await Db.AiCallLogs.FirstOrDefaultAsync(l => l.Id == id);
+        if (_selected is not null) _targetSlot = _selected.Slot;
+    }
+
+    private async Task RunReplay()
+    {
+        if (_selected is null) return;
+        _busy = true;
+        _error = null;
+        try
+        {
+            _result = await ReplayHandler.HandleAsync(new(_selected.Id, _targetSlot, ProfileIdValue), default);
+        }
+        catch (Exception ex)
+        {
+            // The failed replay is already captured in AiCallLog; surface a message rather than crash the circuit.
+            _error = $"Replay failed: {ex.Message}";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}
