@@ -1,3 +1,4 @@
+using SeedForge.Domain;
 using SeedForge.Services.YouTube;
 
 namespace SeedForge.UnitTests.Fakes
@@ -12,9 +13,11 @@ namespace SeedForge.UnitTests.Fakes
         private readonly Dictionary<string, ResolvedChannel> _resolutions = new();
         private readonly Dictionary<string, IReadOnlyList<string>> _recent = new();
         private readonly HashSet<string> _throwOnPlaylist = new();
+        private readonly Dictionary<string, VideoMetadata> _metadata = new(StringComparer.Ordinal);
 
         public int ResolveCalls { get; private set; }
         public int ListCalls { get; private set; }
+        public int MetadataCalls { get; private set; }
 
         public FakeYouTubeDataClient Resolves(string input, ResolvedChannel resolved)
         {
@@ -34,6 +37,12 @@ namespace SeedForge.UnitTests.Fakes
             return this;
         }
 
+        public FakeYouTubeDataClient HasMetadata(string videoId, VideoMetadata metadata)
+        {
+            _metadata[videoId] = metadata;
+            return this;
+        }
+
         public Task<ResolvedChannel> ResolveChannelAsync(string input, CancellationToken ct = default)
         {
             ResolveCalls++;
@@ -47,6 +56,16 @@ namespace SeedForge.UnitTests.Fakes
             if (_throwOnPlaylist.Contains(uploadsPlaylistId))
                 throw new YouTubeException($"FakeYouTubeDataClient: forced failure for '{uploadsPlaylistId}'.");
             return Task.FromResult(_recent.TryGetValue(uploadsPlaylistId, out var ids) ? ids : Array.Empty<string>());
+        }
+
+        public Task<IReadOnlyDictionary<string, VideoMetadata>> GetVideoMetadataAsync(
+            IEnumerable<string> videoIds, CancellationToken ct = default)
+        {
+            MetadataCalls++;
+            IReadOnlyDictionary<string, VideoMetadata> map = videoIds
+                .Where(id => _metadata.ContainsKey(id))
+                .ToDictionary(id => id, id => _metadata[id], StringComparer.Ordinal);
+            return Task.FromResult(map);
         }
     }
 }

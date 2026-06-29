@@ -11,5 +11,11 @@ namespace SeedForge.Services.YouTube
 
         /// <summary>How many recent uploads to read from a channel's uploads playlist per poll.</summary>
         public int MaxResults { get; set; } = 20;
+
+        /// <summary>
+        /// When true (default), discovery enriches newly found videos with a batched <c>videos.list</c> call
+        /// (1 quota unit per ≤50 ids). Set false to spend zero extra quota — discovery then behaves exactly as before.
+        /// </summary>
+        public bool FetchVideoMetadata { get; set; } = true;
     }
 }

@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using SeedForge.Domain;
 using SeedForge.Features.Ingestion;
+using SeedForge.Services.Apify;
 using SeedForge.UnitTests.Fakes;
 
 namespace SeedForge.UnitTests
@@ -37,6 +38,89 @@ namespace SeedForge.UnitTests
             Assert.Equal("the transcript text", transcript.PlainText);
             Assert.False(string.IsNullOrWhiteSpace(transcript.RawDatasetItemJson));
             Assert.Equal(1.5, transcript.ApifyCostUnits);
+        }
+
+        [Fact]
+        public async Task Success_stamps_apify_metadata_onto_the_video()
+        {
+            var metadata = new Domain.VideoMetadata(
+                DurationSeconds: 933, ViewCount: 1234567, LikeCount: 8901, CommentCount: 42,
+                PublishedAtUtc: new DateTime(2026, 6, 28, 10, 0, 0, DateTimeKind.Utc),
+                Description: "desc", ThumbnailUrl: "https://img/hq.jpg", YouTubeChannelId: "UC_chan",
+                Source: Domain.MetadataSource.Apify);
+            var apify = FakeApifyIngestionService.Returns(
+                new IngestedVideo(true, "text", "Title", "Channel", """{"x":1}""", 1.0, VideoId, metadata));
+
+            using var db = _h.NewDb();
+            var result = await Build(apify, db).HandleAsync(new(Url, "corr-1"), default);
+
+            using var read = _h.NewDb();
+            var video = read.Videos.Single(v => v.Id == result.VideoId);
+            Assert.Equal(933, video.DurationSeconds);
+            Assert.Equal(1234567L, video.ViewCount);
+            Assert.Equal(8901L, video.LikeCount);
+            Assert.Equal(42L, video.CommentCount);
+            Assert.Equal("UC_chan", video.YouTubeChannelId);
+            Assert.Equal(Domain.MetadataSource.Apify, video.MetadataSource);
+            Assert.NotNull(video.MetadataFetchedAtUtc);
+        }
+
+        [Fact]
+        public async Task Ingest_merges_fresh_apify_with_pre_existing_discovery_metadata()
+        {
+            // Simulate discovery: a Video row already carrying YouTube metadata, not yet transcribed.
+            using (var seed = _h.NewDb())
+            {
+                seed.Videos.Add(new Video
+                {
+                    YouTubeVideoId = VideoId,
+                    Url = Url,
+                    Status = VideoJobStatus.Pending,
+                    CreatedAtUtc = DateTime.UtcNow,
+                    ViewCount = 200,            // fresh YouTube stat
+                    CommentCount = 9,           // YouTube-only field
+                    YouTubeChannelId = "UC_yt",
+                    MetadataSource = MetadataSource.YouTube,
+                    MetadataFetchedAtUtc = DateTime.UtcNow,
+                });
+                seed.SaveChanges();
+            }
+
+            // Ingest brings the free Apify parse: duration + likes (gaps YouTube didn't have) and a staler view count.
+            var apifyMeta = new VideoMetadata(
+                DurationSeconds: 933, ViewCount: 100, LikeCount: 5, CommentCount: null,
+                PublishedAtUtc: null, Description: "apify", ThumbnailUrl: "apify.jpg", YouTubeChannelId: null,
+                Source: MetadataSource.Apify);
+            var apify = FakeApifyIngestionService.Returns(
+                new IngestedVideo(true, "text", "Title", "Channel", """{"x":1}""", 1.0, VideoId, apifyMeta));
+
+            using var db = _h.NewDb();
+            var result = await Build(apify, db).HandleAsync(new(Url, "corr-1"), default);
+
+            using var read = _h.NewDb();
+            var video = read.Videos.Single(v => v.Id == result.VideoId);
+            Assert.Equal(MetadataSource.Merged, video.MetadataSource);
+            Assert.Equal(200L, video.ViewCount);   // YouTube (fresher) wins the stat
+            Assert.Equal(9L, video.CommentCount);  // preserved from discovery
+            Assert.Equal(5L, video.LikeCount);     // Apify filled the gap
+            Assert.Equal(933, video.DurationSeconds); // Apify-only
+            Assert.Equal("UC_yt", video.YouTubeChannelId); // discovery value kept (Apify had none)
+        }
+
+        [Fact]
+        public async Task No_metadata_leaves_source_None()
+        {
+            // A transcript with no parseable metadata (Metadata == null) must not flip MetadataSource off None.
+            var apify = FakeApifyIngestionService.WithTranscript(VideoId, "text");
+
+            using var db = _h.NewDb();
+            var result = await Build(apify, db).HandleAsync(new(Url, "corr-1"), default);
+
+            using var read = _h.NewDb();
+            var video = read.Videos.Single(v => v.Id == result.VideoId);
+            Assert.Equal(Domain.MetadataSource.None, video.MetadataSource);
+            Assert.Null(video.MetadataFetchedAtUtc);
+            Assert.Null(video.DurationSeconds);
         }
 
         [Fact]

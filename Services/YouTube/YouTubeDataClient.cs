@@ -1,5 +1,8 @@
+using System.Globalization;
 using System.Text.Json;
+using System.Xml;
 using Microsoft.Extensions.Options;
+using SeedForge.Domain;
 
 namespace SeedForge.Services.YouTube
 {
@@ -69,6 +72,150 @@ namespace SeedForge.Services.YouTube
 
             log.LogInformation("Listed {Count} recent video id(s) for uploads playlist {Uploads}", ids.Count, uploadsPlaylistId);
             return ids;
+        }
+
+        private const int MaxIdsPerCall = 50; // videos.list accepts up to 50 ids in one (1-unit) call.
+
+        public async Task<IReadOnlyDictionary<string, VideoMetadata>> GetVideoMetadataAsync(
+            IEnumerable<string> videoIds, CancellationToken ct = default)
+        {
+            var ids = videoIds
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+
+            var result = new Dictionary<string, VideoMetadata>(StringComparer.Ordinal);
+            if (ids.Count == 0) return result;
+
+            // Batch into ≤50-id calls; each batch is a single quota unit.
+            for (var offset = 0; offset < ids.Count; offset += MaxIdsPerCall)
+            {
+                var batch = ids.Skip(offset).Take(MaxIdsPerCall).ToList();
+                var idParam = string.Join(",", batch.Select(Uri.EscapeDataString));
+                var query = $"videos?part=snippet,contentDetails,statistics&id={idParam}&maxResults={MaxIdsPerCall}";
+
+                using var doc = await GetAsync(query, ct);
+                if (!doc.RootElement.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array)
+                {
+                    continue;
+                }
+
+                foreach (var item in items.EnumerateArray())
+                {
+                    if (item.TryGetProperty("id", out var idEl)
+                        && idEl.ValueKind == JsonValueKind.String
+                        && idEl.GetString() is { Length: > 0 } id)
+                    {
+                        result[id] = MapVideo(item);
+                    }
+                }
+            }
+
+            log.LogInformation("Fetched metadata for {Got}/{Asked} video id(s) via videos.list", result.Count, ids.Count);
+            return result;
+        }
+
+        /// <summary>Maps one <c>videos.list</c> item to <see cref="VideoMetadata"/>, tolerating missing fields (null, never throw).</summary>
+        private static VideoMetadata MapVideo(JsonElement item)
+        {
+            var snippet = item.TryGetProperty("snippet", out var s) && s.ValueKind == JsonValueKind.Object ? s : default;
+            var stats = item.TryGetProperty("statistics", out var st) && st.ValueKind == JsonValueKind.Object ? st : default;
+            var content = item.TryGetProperty("contentDetails", out var cd) && cd.ValueKind == JsonValueKind.Object ? cd : default;
+
+            return new VideoMetadata(
+                DurationSeconds: ReadIsoDuration(content),
+                ViewCount: ReadLongString(stats, "viewCount"),
+                LikeCount: ReadLongString(stats, "likeCount"),
+                CommentCount: ReadLongString(stats, "commentCount"),
+                PublishedAtUtc: ReadDate(snippet, "publishedAt"),
+                Description: ReadString(snippet, "description"),
+                ThumbnailUrl: ReadBestThumbnail(snippet),
+                YouTubeChannelId: ReadString(snippet, "channelId"),
+                Source: MetadataSource.YouTube);
+        }
+
+        /// <summary>contentDetails.duration is ISO-8601 ("PT15M33S"); convert to whole seconds via the in-box XmlConvert.</summary>
+        private static int? ReadIsoDuration(JsonElement content)
+        {
+            if (content.ValueKind != JsonValueKind.Object
+                || !content.TryGetProperty("duration", out var d)
+                || d.ValueKind != JsonValueKind.String)
+            {
+                return null;
+            }
+
+            var iso = d.GetString();
+            if (string.IsNullOrWhiteSpace(iso)) return null;
+            try
+            {
+                return (int)XmlConvert.ToTimeSpan(iso).TotalSeconds;
+            }
+            catch (FormatException)
+            {
+                return null; // live streams report "P0D" / odd shapes — treat as unknown.
+            }
+        }
+
+        /// <summary>YouTube statistics arrive as numeric strings; parse to long, null on absence (hidden likes stay null).</summary>
+        private static long? ReadLongString(JsonElement obj, string key)
+        {
+            if (obj.ValueKind == JsonValueKind.Object
+                && obj.TryGetProperty(key, out var el)
+                && el.ValueKind == JsonValueKind.String
+                && long.TryParse(el.GetString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var n))
+            {
+                return n;
+            }
+            return null;
+        }
+
+        private static DateTime? ReadDate(JsonElement obj, string key)
+        {
+            if (obj.ValueKind == JsonValueKind.Object
+                && obj.TryGetProperty(key, out var el)
+                && el.ValueKind == JsonValueKind.String
+                && DateTime.TryParse(el.GetString(), CultureInfo.InvariantCulture,
+                    DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out var dt))
+            {
+                return dt;
+            }
+            return null;
+        }
+
+        private static string? ReadString(JsonElement obj, string key)
+        {
+            if (obj.ValueKind == JsonValueKind.Object
+                && obj.TryGetProperty(key, out var el)
+                && el.ValueKind == JsonValueKind.String)
+            {
+                var v = el.GetString();
+                return string.IsNullOrWhiteSpace(v) ? null : v;
+            }
+            return null;
+        }
+
+        /// <summary>snippet.thumbnails is an object keyed by size; pick the highest resolution available.</summary>
+        private static string? ReadBestThumbnail(JsonElement snippet)
+        {
+            if (snippet.ValueKind != JsonValueKind.Object
+                || !snippet.TryGetProperty("thumbnails", out var thumbs)
+                || thumbs.ValueKind != JsonValueKind.Object)
+            {
+                return null;
+            }
+
+            foreach (var size in new[] { "maxres", "standard", "high", "medium", "default" })
+            {
+                if (thumbs.TryGetProperty(size, out var t)
+                    && t.ValueKind == JsonValueKind.Object
+                    && t.TryGetProperty("url", out var u)
+                    && u.ValueKind == JsonValueKind.String
+                    && u.GetString() is { Length: > 0 } url)
+                {
+                    return url;
+                }
+            }
+            return null;
         }
 
         /// <summary>Resolves a legacy custom reference to a channel id via <c>search.list</c> (the higher-quota fallback), then builds an id query.</summary>

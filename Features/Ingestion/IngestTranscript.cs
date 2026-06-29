@@ -77,6 +77,7 @@ namespace SeedForge.Features.Ingestion
                     video.Status = VideoJobStatus.Done;
                     video.Title = ing.Title;
                     video.ApifyCostUnits = ing.CostUnits;
+                    ApplyMetadata(video, ing.Metadata);
                     await db.SaveChangesAsync(ct);
 
                     log.LogInformation("Ingested video {VideoId} → transcript {TranscriptId} (corr {Corr})",
@@ -88,6 +89,7 @@ namespace SeedForge.Features.Ingestion
                 video.Status = VideoJobStatus.NoTranscript;
                 video.Title = ing.Title;
                 video.ApifyCostUnits = ing.CostUnits;
+                ApplyMetadata(video, ing.Metadata);
                 await db.SaveChangesAsync(ct);
 
                 log.LogInformation("Video {VideoId} has no transcript (corr {Corr})", videoId, req.CorrelationId);
@@ -103,6 +105,24 @@ namespace SeedForge.Features.Ingestion
                 log.LogWarning(ex, "Apify fetch failed for video {VideoId} (corr {Corr})", videoId, req.CorrelationId);
                 return new IngestTranscriptResult(video.Id, null, VideoJobStatus.Failed);
             }
+        }
+
+        /// <summary>
+        /// Stamps best-effort Apify metadata onto the video. A null/empty parse leaves the row untouched
+        /// (<see cref="MetadataSource.None"/>) so a later backfill or YouTube enrichment can still fill it. When the row
+        /// already carries discovery-time YouTube metadata, the fresh Apify parse is merged with it (YouTube keeps the
+        /// canonical stats; Apify fills gaps) rather than overwritten.
+        /// </summary>
+        private static void ApplyMetadata(Video video, VideoMetadata? freshApify)
+        {
+            if (freshApify is not { HasAnyValue: true }) return; // nothing new; leave any discovery metadata intact
+
+            var existing = VideoMetadata.FromVideo(video);
+            var resolved = existing is { Source: MetadataSource.YouTube or MetadataSource.Merged }
+                ? VideoMetadataMerge.Combine(freshApify, existing)
+                : freshApify;
+
+            resolved!.ApplyTo(video, DateTime.UtcNow);
         }
     }
 }

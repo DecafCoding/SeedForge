@@ -1,4 +1,5 @@
 using System.Text.Json;
+using SeedForge.Domain;
 using SeedForge.Services.YouTube;
 
 namespace SeedForge.Services.Apify
@@ -39,6 +40,7 @@ namespace SeedForge.Services.Apify
             }
 
             var item = root[0];
+            var rawItemJson = item.GetRawText();
             var text = TryJoinSubtitles(item)
                     ?? TryGetString(item, "transcript")
                     ?? TryGetString(item, "captions")
@@ -50,10 +52,21 @@ namespace SeedForge.Services.Apify
                        ?? TryGetString(item, "channel")
                        ?? TryGetString(item, "channelUsername");
 
-            log.LogInformation("Apify item for {VideoId}: hadTranscript={HadTranscript}, title={HasTitle}",
-                videoId, hadTranscript, title is not null);
+            // Metadata is free: it comes out of the same raw item. A parse miss must never fail the fetch.
+            VideoMetadata? metadata = null;
+            try
+            {
+                metadata = ApifyMetadataParser.TryParse(rawItemJson);
+            }
+            catch (Exception ex)
+            {
+                log.LogWarning(ex, "Apify metadata parse failed for {VideoId}; continuing without metadata", videoId);
+            }
 
-            return new IngestedVideo(hadTranscript, text, title, channel, item.GetRawText(), result.CostUnits, videoId);
+            log.LogInformation("Apify item for {VideoId}: hadTranscript={HadTranscript}, title={HasTitle}, metadata={HasMetadata}",
+                videoId, hadTranscript, title is not null, metadata?.HasAnyValue == true);
+
+            return new IngestedVideo(hadTranscript, text, title, channel, rawItemJson, result.CostUnits, videoId, metadata);
         }
 
         /// <summary>Joins a <c>subtitles</c> array, accepting either string elements or objects carrying <c>plaintext</c>/<c>text</c>.</summary>

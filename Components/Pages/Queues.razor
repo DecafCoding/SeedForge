@@ -4,6 +4,7 @@
 @using Microsoft.Extensions.Options
 @using SeedForge.Data
 @using SeedForge.Domain
+@using SeedForge.Features.Maintenance
 @using SeedForge.Services.Queues
 @using SeedForge.Workers
 @inject ApplicationDbContext Db
@@ -11,6 +12,7 @@
 @inject ConceptQueue ConceptQueue
 @inject WorkerControl Control
 @inject IOptions<WorkerOptions> WorkerOptions
+@inject BackfillVideoMetadataHandler BackfillMetadata
 
 <PageTitle>Queues</PageTitle>
 
@@ -96,6 +98,16 @@
         @(_busy ? "Working…" : "Add to queue")
     </button>
 </div>
+
+<hr />
+
+<h2>Maintenance</h2>
+<p>Backfill video metadata (duration, views, likes, publish date, …) for videos ingested before metadata capture, by re-parsing the Apify item already stored with each transcript. <strong>Free</strong> — no Apify re-fetch. Idempotent: safe to run repeatedly.</p>
+<button class="btn btn-outline-secondary mb-3" disabled="@_busy" @onclick="BackfillMetadataAsync">
+    @(_busy ? "Working…" : "Backfill video metadata")
+</button>
+
+<hr />
 
 <button class="btn btn-link" disabled="@_busy" @onclick="RefreshAsync">Refresh</button>
 
@@ -218,6 +230,15 @@
         {
             await ConceptQueue.ProcessNowAsync(_processJobId!.Value);
             _message = $"Job #{_processJobId} prioritized; Concept worker woken.";
+        });
+    }
+
+    private async Task BackfillMetadataAsync()
+    {
+        await RunAsync(async () =>
+        {
+            var result = await BackfillMetadata.HandleAsync();
+            _message = $"Backfill complete: {result.Updated} of {result.Scanned} candidate video(s) updated.";
         });
     }
 

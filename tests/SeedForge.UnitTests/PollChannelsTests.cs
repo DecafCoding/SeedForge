@@ -45,10 +45,12 @@ namespace SeedForge.UnitTests
         }
 
         // The handler + queue share one DbContext (mirrors the per-iteration scope in the app).
-        private PollChannelsHandler NewHandler(FakeYouTubeDataClient yt, SeedForge.Data.ApplicationDbContext db)
+        private PollChannelsHandler NewHandler(
+            FakeYouTubeDataClient yt, SeedForge.Data.ApplicationDbContext db, bool fetchVideoMetadata = false)
         {
             var queue = new VideoQueue(db, Options.Create(_opts), new WorkerControl(), NullLogger<VideoQueue>.Instance);
-            return new PollChannelsHandler(db, yt, queue, NullLogger<PollChannelsHandler>.Instance);
+            var ytOptions = Options.Create(new YouTubeOptions { FetchVideoMetadata = fetchVideoMetadata });
+            return new PollChannelsHandler(db, yt, queue, ytOptions, NullLogger<PollChannelsHandler>.Instance);
         }
 
         [Fact]
@@ -93,6 +95,51 @@ namespace SeedForge.UnitTests
             using var read = _h.NewDb();
             Assert.Equal(1, read.Videos.Count()); // no new rows
             Assert.NotNull(read.Channels.Single(c => c.Id == channelId).LastPolledUtc);
+        }
+
+        [Fact]
+        public async Task Poll_with_enrichment_on_stamps_youtube_metadata_on_new_videos()
+        {
+            var channelId = SeedChannel();
+            var yt = new FakeYouTubeDataClient()
+                .HasRecent(UploadsId, "new00000001", "new00000002")
+                .HasMetadata("new00000001", new VideoMetadata(
+                    DurationSeconds: 600, ViewCount: 12345, LikeCount: 678, CommentCount: 9,
+                    PublishedAtUtc: new DateTime(2026, 6, 28, 0, 0, 0, DateTimeKind.Utc),
+                    Description: "d", ThumbnailUrl: "https://img/x.jpg", YouTubeChannelId: "UC_chan",
+                    Source: MetadataSource.YouTube));
+
+            using var db = _h.NewDb();
+            await NewHandler(yt, db, fetchVideoMetadata: true)
+                .HandleAsync(new PollChannelsRequest(channelId), CancellationToken.None);
+
+            Assert.Equal(1, yt.MetadataCalls); // one batched videos.list call
+
+            using var read = _h.NewDb();
+            var enriched = read.Videos.Single(v => v.YouTubeVideoId == "new00000001");
+            Assert.Equal(600, enriched.DurationSeconds);
+            Assert.Equal(12345L, enriched.ViewCount);
+            Assert.Equal(MetadataSource.YouTube, enriched.MetadataSource);
+            Assert.NotNull(enriched.MetadataFetchedAtUtc);
+
+            // The id with no metadata returned stays metadata-less (None) — absence is not an error.
+            var bare = read.Videos.Single(v => v.YouTubeVideoId == "new00000002");
+            Assert.Equal(MetadataSource.None, bare.MetadataSource);
+        }
+
+        [Fact]
+        public async Task Poll_with_enrichment_off_makes_no_videos_list_call()
+        {
+            var channelId = SeedChannel();
+            var yt = new FakeYouTubeDataClient().HasRecent(UploadsId, "new00000001");
+
+            using var db = _h.NewDb();
+            await NewHandler(yt, db, fetchVideoMetadata: false)
+                .HandleAsync(new PollChannelsRequest(channelId), CancellationToken.None);
+
+            Assert.Equal(0, yt.MetadataCalls); // flag off ⇒ zero extra quota
+            using var read = _h.NewDb();
+            Assert.Equal(MetadataSource.None, read.Videos.Single(v => v.YouTubeVideoId == "new00000001").MetadataSource);
         }
 
         public void Dispose() => _h.Dispose();
