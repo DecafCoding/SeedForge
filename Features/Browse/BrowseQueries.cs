@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using SeedForge.Data;
 
@@ -25,6 +26,36 @@ namespace SeedForge.Features.Browse
         int Id, string Url, string? Title, Domain.VideoJobStatus Status,
         int IdeaCount, int Passed, int Failed, int Unscored,
         int ConceptCount, int ActiveConceptCount, DateTime CreatedAtUtc);
+
+    /// <summary>One concept built from this video's ideas, for the Video Details concept table (links to <c>/concepts</c>).</summary>
+    public sealed record ConceptSummary(
+        int Id, int IdeaId, string Title, string Genre,
+        bool IsActive, bool IsStale, string Model, DateTime CreatedAtUtc);
+
+    /// <summary>One LLM call in this video's run, for the Video Details AI trace (filtered by the video's ideas' correlation ids).</summary>
+    public sealed record AiCallSummary(
+        int Id, string Stage, Domain.ModelSlot Slot, string Model,
+        int TotalTokens, double EstimatedCost, bool Success, DateTime CreatedAtUtc);
+
+    /// <summary>
+    /// The full single-video view-model for <c>/videos/{id}</c>: identity (<paramref name="Url"/>/<paramref name="Title"/>/
+    /// <paramref name="Channel"/>/<paramref name="DurationSeconds"/> + Phase 8 metadata), lifecycle
+    /// (<paramref name="Status"/>/<paramref name="DateAddedUtc"/>/<paramref name="DateProcessedUtc"/>/attempts/cost/error),
+    /// pipeline yield (<paramref name="SegmentCount"/>, idea split <paramref name="Passed"/>/<paramref name="Failed"/>/
+    /// <paramref name="Unscored"/>, <paramref name="Concepts"/>), and the AI trace (<paramref name="AiCalls"/> + totals).
+    /// <paramref name="DurationSeconds"/> is <c>Video.DurationSeconds</c> (Phase 8) or, for rows ingested earlier, parsed
+    /// from <c>Transcript.RawDatasetItemJson</c>; null when neither has it. <paramref name="IsProcessedDerived"/> is true
+    /// when <paramref name="DateProcessedUtc"/> is derived from the AI log/transcript rather than a stored timestamp.
+    /// </summary>
+    public sealed record VideoDetail(
+        int Id, string Url, string? Title, string? Channel, int? DurationSeconds,
+        Domain.VideoJobStatus Status,
+        DateTime DateAddedUtc, DateTime? DateProcessedUtc, bool IsProcessedDerived,
+        double? ApifyCostUnits, int AttemptCount, string? ErrorMessage,
+        int SegmentCount, int IdeaCount, int Passed, int Failed, int Unscored,
+        IReadOnlyList<ConceptSummary> Concepts,
+        IReadOnlyList<AiCallSummary> AiCalls, int TotalTokens, double TotalCost,
+        long? ViewCount, DateTime? PublishedAtUtc, string? ThumbnailUrl);
 
     /// <summary>
     /// Shared read-only projections for the Phase 9–11 browse pages (Ideas · Videos · Video Details). Queries via the
@@ -116,6 +147,139 @@ namespace SeedForge.Features.Browse
                     ideaIds.Count, passed, failed, unscored,
                     vConcepts.Count, vConcepts.Count(c => c.IsActive), v.CreatedAtUtc);
             }).ToList();
+        }
+
+        /// <summary>
+        /// Everything known about one <see cref="Domain.Video"/> for the <c>/videos/{id}</c> detail page, or null when the
+        /// id is unknown. Resolves the channel via <see cref="Domain.Video.ChannelId"/> (left join) falling back to
+        /// <see cref="Domain.Transcript.ChannelName"/>; the duration from <see cref="Domain.Video.DurationSeconds"/>
+        /// (Phase 8) or, for pre-Phase-8 rows, parsed from <see cref="Domain.Transcript.RawDatasetItemJson"/>; the idea
+        /// split from each idea's <em>latest</em> <see cref="Domain.IdeaScore"/> verdict; and the AI trace from every
+        /// <see cref="Domain.AiCallLog"/> sharing one of this video's ideas' correlation ids. The processed-time prefers
+        /// the stored <see cref="Domain.Video.ProcessedAtUtc"/> and, when absent, derives it as the latest AI-call time
+        /// (else the transcript's creation time) — flagged via <see cref="VideoDetail.IsProcessedDerived"/>.
+        /// </summary>
+        public async Task<VideoDetail?> VideoDetailAsync(int id, CancellationToken ct = default)
+        {
+            var v = await db.Videos.FirstOrDefaultAsync(x => x.Id == id, ct);
+            if (v is null) return null;
+
+            var transcript = await db.Transcripts.FirstOrDefaultAsync(t => t.VideoId == id, ct);
+
+            // Channel: left join Video.ChannelId -> Channel.Title, falling back to the transcript's channel name.
+            string? channel = null;
+            if (v.ChannelId is int channelId)
+            {
+                channel = await db.Channels.Where(c => c.Id == channelId).Select(c => c.Title).FirstOrDefaultAsync(ct);
+            }
+            channel ??= transcript?.ChannelName;
+
+            // Duration: Phase 8 column wins; otherwise parse the preserved raw Apify item (interim).
+            int? duration = v.DurationSeconds
+                ?? (transcript is null ? null : TryParseDuration(transcript.RawDatasetItemJson));
+
+            // Yield: segments and ideas come off this video's single transcript.
+            int segmentCount = 0;
+            var ideas = new List<Domain.Idea>();
+            if (transcript is not null)
+            {
+                var segmentIds = await db.Segments.Where(s => s.TranscriptId == transcript.Id)
+                    .Select(s => s.Id).ToListAsync(ct);
+                segmentCount = segmentIds.Count;
+                ideas = await db.Ideas.Where(i => segmentIds.Contains(i.SegmentId)).ToListAsync(ct);
+            }
+            var ideaIds = ideas.Select(i => i.Id).ToList();
+            var correlationIds = ideas.Select(i => i.CorrelationId)
+                .Where(c => !string.IsNullOrEmpty(c)).Distinct().ToHashSet();
+
+            // Latest-score verdict per idea (materialize then group — GroupBy+First doesn't always translate).
+            var latestPass = (await db.IdeaScores.Where(s => ideaIds.Contains(s.IdeaId)).ToListAsync(ct))
+                .GroupBy(s => s.IdeaId)
+                .ToDictionary(g => g.Key, g => g.OrderByDescending(s => s.Id).First().PassedThreshold);
+            int passed = ideaIds.Count(i => latestPass.TryGetValue(i, out var p) && p);
+            int failed = ideaIds.Count(i => latestPass.TryGetValue(i, out var p) && !p);
+            int unscored = ideaIds.Count - passed - failed;
+
+            // Concepts built from this video's ideas, newest-first.
+            var concepts = (await db.Concepts.Where(c => ideaIds.Contains(c.IdeaId)).ToListAsync(ct))
+                .OrderByDescending(c => c.Id)
+                .Select(c => new ConceptSummary(c.Id, c.IdeaId, c.Title, c.Genre, c.IsActive, c.IsStale, c.Model, c.CreatedAtUtc))
+                .ToList();
+
+            // AI trace: every call sharing one of this video's correlation ids, newest-first.
+            var calls = correlationIds.Count == 0
+                ? new List<Domain.AiCallLog>()
+                : await db.AiCallLogs.Where(l => correlationIds.Contains(l.CorrelationId)).ToListAsync(ct);
+            var aiCalls = calls.OrderByDescending(l => l.Id)
+                .Select(l => new AiCallSummary(l.Id, l.Stage, l.Slot, l.Model, l.TotalTokens, l.EstimatedCost, l.Success, l.CreatedAtUtc))
+                .ToList();
+            int totalTokens = calls.Sum(l => l.TotalTokens);
+            double totalCost = calls.Sum(l => l.EstimatedCost);
+
+            // Processed-time: prefer the stored Video.ProcessedAtUtc; for rows processed before it existed, derive it from
+            // the latest AI call, else the transcript's creation time (flagged derived so the UI labels it honestly).
+            DateTime? processed = v.ProcessedAtUtc;
+            bool derived = processed is null;
+            if (derived)
+            {
+                processed = calls.Count > 0
+                    ? calls.Max(l => l.CreatedAtUtc)
+                    : transcript?.CreatedAtUtc;
+            }
+
+            return new VideoDetail(
+                v.Id, v.Url, v.Title, channel, duration,
+                v.Status,
+                v.CreatedAtUtc, processed, derived,
+                v.ApifyCostUnits ?? transcript?.ApifyCostUnits, v.AttemptCount, v.ErrorMessage,
+                segmentCount, ideaIds.Count, passed, failed, unscored,
+                concepts,
+                aiCalls, totalTokens, totalCost,
+                v.ViewCount, v.PublishedAtUtc, v.ThumbnailUrl);
+        }
+
+        /// <summary>
+        /// Interim duration parse for pre-Phase-8 rows: probes the verbatim Apify item for a likely duration key,
+        /// accepting either a numeric seconds value or a clock string ("1:02:03" ⇒ 3723). Null when absent/unparseable.
+        /// </summary>
+        private static int? TryParseDuration(string rawJson)
+        {
+            if (string.IsNullOrWhiteSpace(rawJson)) return null;
+            try
+            {
+                using var doc = JsonDocument.Parse(rawJson);
+                if (doc.RootElement.ValueKind != JsonValueKind.Object) return null;
+                foreach (var key in new[] { "duration", "lengthSeconds", "durationSeconds" })
+                {
+                    if (!doc.RootElement.TryGetProperty(key, out var el)) continue;
+                    return el.ValueKind switch
+                    {
+                        JsonValueKind.Number when el.TryGetInt32(out var n) => n,
+                        JsonValueKind.String => ParseClock(el.GetString()),
+                        _ => null,
+                    };
+                }
+            }
+            catch (JsonException)
+            {
+                // Malformed raw item — treat as "no duration" rather than crashing the page.
+            }
+            return null;
+        }
+
+        /// <summary>Parses a "ss", "mm:ss", or "hh:mm:ss" clock string to total seconds; null on anything unexpected.</summary>
+        private static int? ParseClock(string? clock)
+        {
+            if (string.IsNullOrWhiteSpace(clock)) return null;
+            var parts = clock.Split(':');
+            if (parts.Length is < 1 or > 3) return null;
+            int total = 0;
+            foreach (var part in parts)
+            {
+                if (!int.TryParse(part, out var n) || n < 0) return null;
+                total = total * 60 + n;
+            }
+            return total;
         }
     }
 }
