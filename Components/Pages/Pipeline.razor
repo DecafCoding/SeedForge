@@ -10,8 +10,20 @@
 <PageTitle>Pipeline</PageTitle>
 
 <h1>Pipeline</h1>
-<p>Paste a transcript and run it through segmentation → extraction → scoring → concept building.</p>
+<p>Run a transcript through segmentation → extraction → scoring → concept building. Either paste a transcript or fetch one from a YouTube URL via Apify.</p>
 
+<h2>From a YouTube URL</h2>
+<div class="mb-3">
+    <label class="form-label" for="url">YouTube URL or video id</label>
+    <input id="url" class="form-control" placeholder="https://www.youtube.com/watch?v=…" @bind="_urlInput" disabled="@_busy" />
+</div>
+<button class="btn btn-primary" disabled="@(_busy || string.IsNullOrWhiteSpace(_urlInput))" @onclick="RunFromUrlAsync">
+    @(_busy ? "Working…" : "Fetch & run")
+</button>
+
+<hr />
+
+<h2>From pasted text</h2>
 <div class="mb-3">
     <label class="form-label" for="title">Title (optional)</label>
     <input id="title" class="form-control" @bind="_title" disabled="@_busy" />
@@ -27,6 +39,44 @@
 @if (_error is not null)
 {
     <div class="alert alert-danger mt-3">@_error</div>
+}
+
+@if (_ingestStatus is not null)
+{
+    <div class="mt-3">
+        @{
+            var (cls, label) = _ingestStatus switch
+            {
+                VideoJobStatus.Done => ("alert-success", "Transcript fetched"),
+                VideoJobStatus.NoTranscript => ("alert-warning", "No captions available for this video"),
+                VideoJobStatus.Failed => ("alert-danger", "Fetch failed"),
+                _ => ("alert-secondary", _ingestStatus.ToString()),
+            };
+        }
+        <div class="alert @cls">
+            <strong>@label.</strong>
+            @if (_video is not null)
+            {
+                <span> — @(_video.Title ?? _video.YouTubeVideoId)</span>
+                @if (!string.IsNullOrWhiteSpace(_ingestedTranscript?.ChannelName))
+                {
+                    <span> (@_ingestedTranscript!.ChannelName)</span>
+                }
+            }
+            @if (_ingestStatus == VideoJobStatus.Failed && !string.IsNullOrWhiteSpace(_video?.ErrorMessage))
+            {
+                <div class="mt-1"><small>@_video!.ErrorMessage</small></div>
+            }
+        </div>
+
+        @if (_ingestedTranscript is not null)
+        {
+            <details>
+                <summary>Transcript (@_ingestedTranscript.PlainText.Length chars)</summary>
+                <p style="white-space:pre-wrap">@_ingestedTranscript.PlainText</p>
+            </details>
+        }
+    </div>
 }
 
 @if (_result is not null)
@@ -125,8 +175,13 @@
 @code {
     private string _transcript = string.Empty;
     private string? _title;
+    private string _urlInput = string.Empty;
     private bool _busy;
     private string? _error;
+
+    private VideoJobStatus? _ingestStatus;
+    private Video? _video;
+    private Transcript? _ingestedTranscript;
 
     private PipelineRunResult? _result;
     private List<Segment> _segments = new();
@@ -135,11 +190,24 @@
     private List<Concept> _concepts = new();
     private List<AiCallLog> _trace = new();
 
+    private void ResetResults()
+    {
+        _error = null;
+        _result = null;
+        _ingestStatus = null;
+        _video = null;
+        _ingestedTranscript = null;
+        _segments = new();
+        _ideas = new();
+        _scores = new();
+        _concepts = new();
+        _trace = new();
+    }
+
     private async Task RunAsync()
     {
         _busy = true;
-        _error = null;
-        _result = null;
+        ResetResults();
         try
         {
             var result = await Runner.RunAsync(_transcript, string.IsNullOrWhiteSpace(_title) ? null : _title);
@@ -150,6 +218,37 @@
         {
             // A stage failure is already recorded in AiCallLog; surface a message rather than an unhandled exception.
             _error = $"Pipeline run failed: {ex.Message}";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task RunFromUrlAsync()
+    {
+        _busy = true;
+        ResetResults();
+        try
+        {
+            var urlResult = await Runner.RunFromUrlAsync(_urlInput);
+            _ingestStatus = urlResult.Status;
+            _video = await Db.Videos.FirstOrDefaultAsync(v => v.Id == urlResult.VideoId);
+            if (urlResult.TranscriptId is int transcriptId)
+            {
+                _ingestedTranscript = await Db.Transcripts.FirstOrDefaultAsync(t => t.Id == transcriptId);
+            }
+
+            // Only Done produced a pipeline run; NoTranscript/Failed are surfaced as outcomes above.
+            if (urlResult.Pipeline is not null)
+            {
+                await LoadResultAsync(urlResult.Pipeline);
+                _result = urlResult.Pipeline;
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"Ingestion/pipeline failed: {ex.Message}";
         }
         finally
         {

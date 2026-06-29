@@ -8,6 +8,7 @@ using SeedForge.Data;
 using SeedForge.Features;
 using SeedForge.Features.Config;
 using SeedForge.Services.Ai;
+using SeedForge.Services.Apify;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -44,6 +45,9 @@ builder.Services.AddSingleton<IEmailSender<ApplicationUser>, IdentityNoOpEmailSe
 
 // AI plumbing: per-slot options, resolver, LLM client + call-logging decorator.
 builder.Services.AddAiServices(builder.Configuration);
+
+// Apify ingestion boundary: typed client + ingestion service.
+builder.Services.AddApifyServices(builder.Configuration);
 
 // Pipeline slices, options, and the orchestrator.
 builder.Services.AddFeatures(builder.Configuration);
