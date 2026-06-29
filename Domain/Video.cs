@@ -12,6 +12,8 @@ namespace SeedForge.Domain
         public double? ApifyCostUnits { get; set; }
         public string? ErrorMessage { get; set; }
         public DateTime CreatedAtUtc { get; set; }
+        /// <summary>When the Processing worker reached a terminal outcome (Done / ProcessedNoIdeas / NoTranscript). Null until processed.</summary>
+        public DateTime? ProcessedAtUtc { get; set; }
 
         // Queue mechanics (Phase 5): the Video row is the Processing-worker job.
         /// <summary>Number of failed processing attempts; drives backoff and the terminal-Failed cap.</summary>

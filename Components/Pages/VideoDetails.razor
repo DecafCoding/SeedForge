@@ -1,0 +1,240 @@
+@page "/videos/{Id:int}"
+@rendermode InteractiveServer
+@using SeedForge.Domain
+@using SeedForge.Features.Browse
+@inject BrowseQueries Browse
+
+<PageTitle>@(_v?.Title ?? "Video") — Details</PageTitle>
+
+@if (_error is not null)
+{
+    <div class="alert alert-danger">@_error</div>
+}
+
+@if (_busy)
+{
+    <p><em>Loading…</em></p>
+}
+else if (_v is null)
+{
+    <h1>Video not found</h1>
+    <p>No video with id <code>@Id</code> exists. <a href="/videos">Back to videos</a>.</p>
+}
+else
+{
+    <p class="mb-1"><a href="/videos">← All videos</a></p>
+    <h1>@(string.IsNullOrWhiteSpace(_v.Title) ? _v.Url : _v.Title)</h1>
+
+    <div class="row">
+        <div class="col-md-7">
+            <h2>Identity</h2>
+            <dl class="row mb-4">
+                <dt class="col-sm-4">URL</dt>
+                <dd class="col-sm-8"><a href="@_v.Url" target="_blank">@_v.Url</a></dd>
+
+                <dt class="col-sm-4">Channel</dt>
+                <dd class="col-sm-8">@(_v.Channel ?? "—")</dd>
+
+                <dt class="col-sm-4">Duration</dt>
+                <dd class="col-sm-8">@FormatDuration(_v.DurationSeconds)</dd>
+
+                @if (_v.ViewCount is long views)
+                {
+                    <dt class="col-sm-4">Views</dt>
+                    <dd class="col-sm-8">@views.ToString("N0")</dd>
+                }
+                @if (_v.PublishedAtUtc is DateTime published)
+                {
+                    <dt class="col-sm-4">Published</dt>
+                    <dd class="col-sm-8">@published.ToString("u")</dd>
+                }
+            </dl>
+
+            <h2>Lifecycle</h2>
+            <dl class="row mb-4">
+                <dt class="col-sm-4">Status</dt>
+                <dd class="col-sm-8">@VideoStateLabel(_v.Status)</dd>
+
+                <dt class="col-sm-4">Date added</dt>
+                <dd class="col-sm-8">@_v.DateAddedUtc.ToString("u")</dd>
+
+                <dt class="col-sm-4">Date processed</dt>
+                <dd class="col-sm-8">
+                    @if (_v.DateProcessedUtc is DateTime processed)
+                    {
+                        <span>@processed.ToString("u")</span>
+                        @if (_v.IsProcessedDerived)
+                        {
+                            <span class="badge bg-secondary ms-1" title="Derived from the AI trace / transcript, not a stored timestamp">derived</span>
+                        }
+                    }
+                    else
+                    {
+                        <span class="text-muted">—</span>
+                    }
+                </dd>
+
+                <dt class="col-sm-4">Attempts</dt>
+                <dd class="col-sm-8">@_v.AttemptCount</dd>
+
+                <dt class="col-sm-4">Apify cost</dt>
+                <dd class="col-sm-8">@(_v.ApifyCostUnits is double cost ? cost.ToString("0.####") + " units" : "—")</dd>
+
+                @if (!string.IsNullOrWhiteSpace(_v.ErrorMessage))
+                {
+                    <dt class="col-sm-4">Error</dt>
+                    <dd class="col-sm-8 text-danger">@_v.ErrorMessage</dd>
+                }
+            </dl>
+        </div>
+
+        <div class="col-md-5">
+            @if (!string.IsNullOrWhiteSpace(_v.ThumbnailUrl))
+            {
+                <img src="@_v.ThumbnailUrl" alt="thumbnail" class="img-fluid rounded mb-3" />
+            }
+
+            <h2>Yield</h2>
+            <dl class="row">
+                <dt class="col-sm-6">Segments</dt>
+                <dd class="col-sm-6">@_v.SegmentCount</dd>
+
+                <dt class="col-sm-6">Ideas</dt>
+                <dd class="col-sm-6">
+                    @_v.IdeaCount
+                    @if (_v.IdeaCount > 0)
+                    {
+                        <small class="text-muted">(@_v.Passed✓ / @_v.Failed✗@(_v.Unscored > 0 ? $" / {_v.Unscored} unscored" : ""))</small>
+                    }
+                </dd>
+
+                <dt class="col-sm-6">Concepts</dt>
+                <dd class="col-sm-6">@_v.Concepts.Count</dd>
+
+                <dt class="col-sm-6">AI cost</dt>
+                <dd class="col-sm-6">@_v.TotalCost.ToString("0.######") <small class="text-muted">(@_v.TotalTokens tok)</small></dd>
+            </dl>
+        </div>
+    </div>
+
+    <h2>Concepts</h2>
+    @if (_v.Concepts.Count == 0)
+    {
+        <p><em>No concepts built from this video yet.</em></p>
+    }
+    else
+    {
+        <table class="table table-sm table-hover align-middle">
+            <thead>
+                <tr><th>Title</th><th>Genre</th><th>State</th><th>Model</th><th>Created</th></tr>
+            </thead>
+            <tbody>
+                @foreach (var c in _v.Concepts)
+                {
+                    <tr>
+                        <td><a href="/concepts">@c.Title</a></td>
+                        <td>@c.Genre</td>
+                        <td>
+                            @if (c.IsActive)
+                            {
+                                <span class="badge bg-success">active</span>
+                            }
+                            @if (c.IsStale)
+                            {
+                                <span class="badge bg-warning text-dark">stale</span>
+                            }
+                            @if (!c.IsActive && !c.IsStale)
+                            {
+                                <span class="text-muted">—</span>
+                            }
+                        </td>
+                        <td>@c.Model</td>
+                        <td><small class="text-muted">@c.CreatedAtUtc.ToString("u")</small></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+
+    <h2>AI trace</h2>
+    @if (_v.AiCalls.Count == 0)
+    {
+        <p><em>No AI calls recorded for this video.</em></p>
+    }
+    else
+    {
+        <table class="table table-sm align-middle">
+            <thead>
+                <tr><th>#</th><th>Stage</th><th>Slot</th><th>Model</th><th class="text-end">Tokens</th><th class="text-end">Cost</th><th>Ok</th><th>When</th></tr>
+            </thead>
+            <tbody>
+                @foreach (var call in _v.AiCalls)
+                {
+                    <tr>
+                        <td>@call.Id</td>
+                        <td>@call.Stage</td>
+                        <td>@call.Slot</td>
+                        <td>@call.Model</td>
+                        <td class="text-end">@call.TotalTokens</td>
+                        <td class="text-end">@call.EstimatedCost.ToString("0.######")</td>
+                        <td>@(call.Success ? "✓" : "✗")</td>
+                        <td><small class="text-muted">@call.CreatedAtUtc.ToString("u")</small></td>
+                    </tr>
+                }
+            </tbody>
+            <tfoot>
+                <tr class="fw-bold">
+                    <td colspan="4">Total (@_v.AiCalls.Count call@(_v.AiCalls.Count == 1 ? "" : "s"))</td>
+                    <td class="text-end">@_v.TotalTokens</td>
+                    <td class="text-end">@_v.TotalCost.ToString("0.######")</td>
+                    <td colspan="2"></td>
+                </tr>
+            </tfoot>
+        </table>
+    }
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private VideoDetail? _v;
+    private bool _busy = true;
+    private string? _error;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            _v = await Browse.VideoDetailAsync(Id, default);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to load video: {ex.Message}";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private static string FormatDuration(int? seconds)
+    {
+        if (seconds is not int s) return "—";
+        var t = TimeSpan.FromSeconds(s);
+        return t.TotalHours >= 1 ? $"{(int)t.TotalHours}:{t.Minutes:00}:{t.Seconds:00}" : $"{t.Minutes}:{t.Seconds:00}";
+    }
+
+    // Mirrors Videos.razor / Queues.razor — a legitimate "Processed · 0 ideas" is NOT a failure.
+    private static string VideoStateLabel(VideoJobStatus status) => status switch
+    {
+        VideoJobStatus.Pending => "Pending",
+        VideoJobStatus.InProgress => "In progress",
+        VideoJobStatus.Done => "Done",
+        VideoJobStatus.Failed => "Failed",
+        VideoJobStatus.NoTranscript => "No transcript",
+        VideoJobStatus.ProcessedNoIdeas => "Processed · 0 ideas",
+        _ => status.ToString(),
+    };
+}
