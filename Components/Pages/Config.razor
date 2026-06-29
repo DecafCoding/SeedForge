@@ -1,0 +1,129 @@
+@page "/config"
+@rendermode InteractiveServer
+@using SeedForge.Domain
+@using SeedForge.Features.Config
+@using SeedForge.Services.Ai
+@inject ProfileService Profiles
+@inject ConnectionTester ConnectionTester
+
+<PageTitle>Config Profiles</PageTitle>
+
+<h1>Config Profiles</h1>
+<p>Switch the active model-configuration profile and test connectivity per slot. Exactly one profile is active.</p>
+
+@if (_profiles is null)
+{
+    <p><em>Loading…</em></p>
+}
+else
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Profile</th>
+                <th>Active</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var profile in _profiles)
+            {
+                <tr>
+                    <td>@profile.Name</td>
+                    <td>@(profile.IsActive ? "✓ active" : "")</td>
+                    <td>
+                        @if (!profile.IsActive)
+                        {
+                            <button class="btn btn-primary btn-sm" disabled="@_busy"
+                                    @onclick="() => SetActiveAsync(profile.Id)">
+                                @(_busy && _activating == profile.Id ? "Switching…" : "Make active")
+                            </button>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+
+    <h2>Test connections</h2>
+    <p>Each slot resolves against the currently active profile.</p>
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Slot</th>
+                <th>Action</th>
+                <th>Result</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var slot in Enum.GetValues<ModelSlot>())
+            {
+                <tr>
+                    <td>@slot</td>
+                    <td>
+                        <button class="btn btn-outline-secondary btn-sm" disabled="@_busy"
+                                @onclick="() => TestAsync(slot)">
+                            @(_busy && _testing == slot ? "Testing…" : "Test")
+                        </button>
+                    </td>
+                    <td>
+                        @if (_results.TryGetValue(slot, out var result))
+                        {
+                            @if (result.Ok)
+                            {
+                                <span class="text-success">OK (@result.LatencyMs ms)</span>
+                            }
+                            else
+                            {
+                                <span class="text-danger">Error: @result.Error</span>
+                            }
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<ConfigProfile>? _profiles;
+    private readonly Dictionary<ModelSlot, ConnectionResult> _results = new();
+    private bool _busy;
+    private int? _activating;
+    private ModelSlot? _testing;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync() => _profiles = await Profiles.ListAsync();
+
+    private async Task SetActiveAsync(int id)
+    {
+        _busy = true;
+        _activating = id;
+        try
+        {
+            await Profiles.SetActiveAsync(id);
+            await LoadAsync();
+        }
+        finally
+        {
+            _busy = false;
+            _activating = null;
+        }
+    }
+
+    private async Task TestAsync(ModelSlot slot)
+    {
+        _busy = true;
+        _testing = slot;
+        try
+        {
+            _results[slot] = await ConnectionTester.TestConnectionAsync(slot);
+        }
+        finally
+        {
+            _busy = false;
+            _testing = null;
+        }
+    }
+}

@@ -1,26 +1,29 @@
 using System.Net;
 using SeedForge.Domain;
 using SeedForge.Services.Ai;
+using SeedForge.UnitTests.Fakes;
 
 namespace SeedForge.UnitTests
 {
     /// <summary>Proves the tester reports success against a reachable stub and a structured error otherwise (never throws).</summary>
-    public class ConnectionTesterTests
+    public class ConnectionTesterTests : IDisposable
     {
-        private static LlmOptionsResolver Resolver()
+        private readonly ResolverHarness _h;
+
+        public ConnectionTesterTests()
         {
             var options = new AiOptions
             {
                 Slots = { ["Seed"] = new LlmOptions { BaseUrl = "http://rig:8070", ApiKey = "local", Model = "m" } },
             };
-            return new LlmOptionsResolver(new TestOptionsMonitor<AiOptions>(options));
+            _h = new ResolverHarness(options); // no profiles ⇒ appsettings fallback
         }
 
         [Fact]
         public async Task Returns_ok_when_endpoint_responds()
         {
             var handler = new StubHttpMessageHandler(StubHttpMessageHandler.ChatResponse("pong"));
-            var tester = new ConnectionTester(Resolver(), new LlmClient(() => handler));
+            var tester = new ConnectionTester(_h.Resolver, new LlmClient(() => handler));
 
             var result = await tester.TestConnectionAsync(ModelSlot.Seed);
 
@@ -32,12 +35,14 @@ namespace SeedForge.UnitTests
         public async Task Returns_error_when_endpoint_fails()
         {
             var handler = new StubHttpMessageHandler("boom", HttpStatusCode.InternalServerError);
-            var tester = new ConnectionTester(Resolver(), new LlmClient(() => handler));
+            var tester = new ConnectionTester(_h.Resolver, new LlmClient(() => handler));
 
             var result = await tester.TestConnectionAsync(ModelSlot.Seed);
 
             Assert.False(result.Ok);
             Assert.NotNull(result.Error);
         }
+
+        public void Dispose() => _h.Dispose();
     }
 }

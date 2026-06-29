@@ -5,7 +5,11 @@ using SeedForge.Services.Ai;
 
 namespace SeedForge.Features.Concepts
 {
-    public sealed record BuildConceptRequest(int IdeaId, string CorrelationId);
+    /// <param name="OptionsOverride">
+    /// When non-null, the Concept slot's resolved options are bypassed in favor of these — the single code path the
+    /// auto pipeline (null ⇒ resolve Concept slot) and run-now regeneration (override) both flow through.
+    /// </param>
+    public sealed record BuildConceptRequest(int IdeaId, string CorrelationId, LlmOptions? OptionsOverride = null);
 
     /// <summary>The structured concept: the six developed fields for a story.</summary>
     public sealed record BuildConceptResponse(
@@ -38,7 +42,7 @@ namespace SeedForge.Features.Concepts
                 .Select(s => (int?)s.Id)
                 .FirstOrDefaultAsync(ct);
 
-            var resolved = slots.Resolve(ModelSlot.Concept);
+            var resolved = req.OptionsOverride ?? slots.Resolve(ModelSlot.Concept);
             var ctx = new AiCallContext(req.CorrelationId, "ConceptBuilder", ModelSlot.Concept,
                                         nameof(Idea), idea.Id);
 

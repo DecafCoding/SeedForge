@@ -20,5 +20,16 @@ namespace SeedForge.Services.Ai
 
         /// <summary>Reasoning effort (e.g. "low"/"medium"/"high"); omitted from the request when null.</summary>
         public string? ReasoningEffort { get; set; }
+
+        /// <summary>Returns a shallow copy so callers can mutate a per-call instance without leaking into shared config.</summary>
+        public LlmOptions Copy() => new()
+        {
+            BaseUrl = BaseUrl,
+            ApiKey = ApiKey,
+            Model = Model,
+            TimeoutSeconds = TimeoutSeconds,
+            Temperature = Temperature,
+            ReasoningEffort = ReasoningEffort,
+        };
     }
 }
