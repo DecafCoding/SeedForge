@@ -1,0 +1,111 @@
+@page "/ideas"
+@rendermode InteractiveServer
+@using SeedForge.Features.Browse
+@inject BrowseQueries Browse
+
+<PageTitle>Ideas</PageTitle>
+
+<h1>Ideas</h1>
+<p>Every extracted idea, with its source video, latest score, pass/fail, and creation date. Click a row to open its full version history in the Concept Browser.</p>
+
+@if (_error is not null)
+{
+    <div class="alert alert-danger">@_error</div>
+}
+
+@if (_busy)
+{
+    <p><em>Loading…</em></p>
+}
+else if (_rows.Count == 0)
+{
+    <p><em>No ideas yet — run the pipeline first.</em></p>
+}
+else
+{
+    <p class="text-muted">@_rows.Count idea@(_rows.Count == 1 ? "" : "s").</p>
+    <table class="table table-sm table-hover align-middle">
+        <thead>
+            <tr>
+                <th>Idea</th>
+                <th>Parent Video</th>
+                <th class="text-end">Novelty</th>
+                <th class="text-end">Coherence</th>
+                <th class="text-end">Sci-Fi</th>
+                <th class="text-end">Formula</th>
+                <th class="text-end">Mean</th>
+                <th>Passed</th>
+                <th>Created</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var r in _rows)
+            {
+                <tr style="cursor:pointer" @onclick="() => OpenConcepts(r.Id)">
+                    <td>#@r.Id — @Truncate(r.Premise, 80)</td>
+                    <td @onclick:stopPropagation="true">
+                        @if (r.VideoId is int videoId)
+                        {
+                            <a href="@($"/videos/{videoId}")">@(string.IsNullOrWhiteSpace(r.VideoTitle) ? r.VideoUrl : r.VideoTitle)</a>
+                        }
+                        else
+                        {
+                            <em class="text-muted">(pasted transcript)</em>
+                        }
+                    </td>
+                    <td class="text-end">@Fmt(r.Novelty)</td>
+                    <td class="text-end">@Fmt(r.Coherence)</td>
+                    <td class="text-end">@Fmt(r.SciFiPotential)</td>
+                    <td class="text-end">@Fmt(r.FormulaFit)</td>
+                    <td class="text-end">@Fmt(r.Mean)</td>
+                    <td>
+                        @if (r.Passed is null)
+                        {
+                            <span class="badge bg-secondary">unscored</span>
+                        }
+                        else if (r.Passed.Value)
+                        {
+                            <span class="badge bg-success">✓</span>
+                        }
+                        else
+                        {
+                            <span class="badge bg-light text-dark">—</span>
+                        }
+                    </td>
+                    <td><small class="text-muted">@r.CreatedAtUtc.ToString("u")</small></td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private IReadOnlyList<IdeaRow> _rows = Array.Empty<IdeaRow>();
+    private bool _busy = true;
+    private string? _error;
+
+    [Inject] private NavigationManager Nav { get; set; } = default!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _rows = await Browse.IdeaRowsAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to load ideas: {ex.Message}";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private void OpenConcepts(int ideaId) => Nav.NavigateTo($"/concepts?ideaId={ideaId}");
+
+    private static string Fmt(double? value) => value is null ? "—" : value.Value.ToString("0.00");
+
+    private static string Truncate(string text, int max) =>
+        text.Length <= max ? text : text[..max] + "…";
+}
