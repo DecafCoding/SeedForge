@@ -46,12 +46,14 @@ namespace SeedForge.UnitTests
         }
 
         [Fact]
-        public async Task Structured_body_is_strict_and_omits_null_temperature()
+        public async Task Structured_body_is_strict_and_omits_null_temperature_in_JsonSchema_mode()
         {
             var handler = new StubHttpMessageHandler(StubHttpMessageHandler.ChatResponse("{\"title\":\"x\",\"count\":1}"));
             var client = new LlmClient(() => handler);
+            var options = LocalOptions();
+            options.StructuredOutput = StructuredOutputMode.JsonSchema;
 
-            await client.CompleteStructuredAsync<Foo>(LocalOptions(), Messages(), Ctx);
+            await client.CompleteStructuredAsync<Foo>(options, Messages(), Ctx);
 
             var body = JsonNode.Parse(handler.LastRequestBody!)!.AsObject();
             Assert.False(body.ContainsKey("temperature"));
@@ -60,6 +62,52 @@ namespace SeedForge.UnitTests
             var schema = body["response_format"]!["json_schema"]!;
             Assert.True(schema["strict"]!.GetValue<bool>());
             Assert.False(schema["schema"]!["additionalProperties"]!.GetValue<bool>());
+        }
+
+        [Fact]
+        public async Task Structured_default_mode_sends_no_response_format_and_describes_schema_in_prompt()
+        {
+            var handler = new StubHttpMessageHandler(StubHttpMessageHandler.ChatResponse("{\"title\":\"x\",\"count\":1}"));
+            var client = new LlmClient(() => handler);
+
+            // Default StructuredOutput is Prompt: tolerant of local servers that 500 on a json_schema response_format.
+            await client.CompleteStructuredAsync<Foo>(LocalOptions(), Messages(), Ctx);
+
+            var body = JsonNode.Parse(handler.LastRequestBody!)!.AsObject();
+            Assert.False(body.ContainsKey("response_format"));
+
+            var systemContent = body["messages"]!.AsArray()
+                .First(m => m!["role"]!.GetValue<string>() == "system")!["content"]!.GetValue<string>();
+            Assert.Contains("JSON Schema", systemContent);
+            Assert.Contains("count", systemContent); // schema mentions the target type's properties
+        }
+
+        [Fact]
+        public async Task Structured_default_mode_recovers_JSON_wrapped_in_fences_and_prose()
+        {
+            // A weak local model often emits the right JSON wrapped in a markdown fence with chatter around it.
+            var reply = "Sure! Here is the result:\n```json\n{\"title\":\"Widget\",\"count\":3}\n```\nHope that helps.";
+            var handler = new StubHttpMessageHandler(StubHttpMessageHandler.ChatResponse(reply));
+            var client = new LlmClient(() => handler);
+
+            var result = await client.CompleteStructuredAsync<Foo>(LocalOptions(), Messages(), Ctx);
+
+            Assert.Equal("Widget", result.Title);
+            Assert.Equal(3, result.Count);
+        }
+
+        [Fact]
+        public async Task JsonObject_mode_sets_json_object_response_format()
+        {
+            var handler = new StubHttpMessageHandler(StubHttpMessageHandler.ChatResponse("{\"title\":\"x\",\"count\":1}"));
+            var client = new LlmClient(() => handler);
+            var options = LocalOptions();
+            options.StructuredOutput = StructuredOutputMode.JsonObject;
+
+            await client.CompleteStructuredAsync<Foo>(options, Messages(), Ctx);
+
+            var body = JsonNode.Parse(handler.LastRequestBody!)!.AsObject();
+            Assert.Equal("json_object", body["response_format"]!["type"]!.GetValue<string>());
         }
 
         [Fact]
