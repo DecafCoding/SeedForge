@@ -12,7 +12,9 @@ The governing data rule: **sources are immutable** (`Transcript`, `Segment`, `Id
 
 Phase 0 (Foundation & Data Spine) is complete: the SQLite data model, the single `ApplicationDbContext`, startup auto-migration, the vertical-slice folder structure, and a build-enforced architecture test are in place.
 
-Phase 1 (LLM Client & Call Logging) is complete: a self-contained `LlmClient` (`Services/Ai/`) that talks to any OpenAI-compatible `/chat/completions` endpoint with free-text and strict `json_schema` structured calls, per-slot configuration (`Ai:Slots`), an `AiCallLogger` decorator that records one `AiCallLog` per call (tokens, latency, cost, correlation id), and a `/diagnostics` page to test each slot's connection. No pipeline or feature UI yet beyond the scaffolded template.
+Phase 1 (LLM Client & Call Logging) is complete: a self-contained `LlmClient` (`Services/Ai/`) that talks to any OpenAI-compatible `/chat/completions` endpoint with free-text and strict `json_schema` structured calls, per-slot configuration (`Ai:Slots`), an `AiCallLogger` decorator that records one `AiCallLog` per call (tokens, latency, cost, correlation id), and a `/diagnostics` page to test each slot's connection.
+
+Phase 2 (The Pipeline, on a Pasted Transcript) is complete: the four pipeline stages are implemented as vertical slices in `Features/` — **SegmentTranscript** (Seed), **ExtractIdeas** (Extraction), **ScoreIdeas** (Scoring, one pass + threshold), and **BuildConcept** (Concept) — composed by a `PipelineRunner` orchestrator (`Pipeline/`) that threads one correlation id across the run. A **`/pipeline`** page pastes a transcript, runs it end to end, and shows the scored ideas, developed concepts, and the full AI trace. Segmentation uses structured boundary anchors located verbatim in the source so segments stay faithful slices of the original transcript.
 
 ## Tech Stack
 
@@ -28,8 +30,9 @@ SeedForge/                     # project + git root (Solution: SeedForge.slnx)
 ├─ Components/                 # Blazor components + Identity account pages
 ├─ Data/                       # ApplicationDbContext, ApplicationUser, Migrations
 ├─ Domain/                     # POCO entities + enums (no EF dependency)
-├─ Features/                   # vertical slices (added in later phases)
-├─ Services/                   # shared services (added in later phases)
+├─ Features/                   # vertical slices (Segmentation, Extraction, Scoring, Concepts)
+├─ Pipeline/                    # PipelineRunner orchestrator (driving adapter)
+├─ Services/                   # shared services (Ai/)
 ├─ Workers/                    # background workers (added in later phases)
 └─ tests/
    ├─ SeedForge.ArchitectureTests/   # NetArchTest boundary rules
@@ -98,4 +101,14 @@ A **blank** `BaseUrl` routes to hosted OpenAI (`https://api.openai.com/v1/`). Ho
 dotnet user-secrets set "Ai:Slots:Concept:ApiKey" "sk-..."
 ```
 
-Every model call is recorded as one `AiCallLog` row (stage, slot, tokens, latency, estimated cost, correlation id). Use the **`/diagnostics`** page to test connectivity to each slot's endpoint.
+Every model call is recorded as one `AiCallLog` row (stage, slot, tokens, latency, estimated cost, correlation id). Use the **`/diagnostics`** page to test connectivity to each slot's endpoint, and the **`/pipeline`** page to run a pasted transcript through the full engine.
+
+### Pipeline Configuration
+
+The scoring threshold is configured under the `Pipeline` section of `appsettings.json`:
+
+```json
+"Pipeline": { "ScoreThreshold": 0.6 }
+```
+
+An idea survives scoring when the mean of its four axes (Novelty, Coherence, SciFiPotential, FormulaFit) is at least `ScoreThreshold`. Only survivors are developed into concepts.
