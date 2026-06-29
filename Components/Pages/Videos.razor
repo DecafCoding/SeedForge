@@ -1,0 +1,117 @@
+@page "/videos"
+@rendermode InteractiveServer
+@using SeedForge.Domain
+@using SeedForge.Features.Browse
+@inject BrowseQueries Browse
+
+<PageTitle>Videos</PageTitle>
+
+<h1>Videos</h1>
+<p>Every discovered/ingested video and its pipeline yield: how many ideas it produced (split passed / failed / unscored by each idea's latest score) and how many concepts came out (active / total). Status makes legitimate non-yield outcomes — No transcript, Processed · 0 ideas — read clearly. Click a row to open the video's details.</p>
+
+@if (_error is not null)
+{
+    <div class="alert alert-danger">@_error</div>
+}
+
+@if (_busy)
+{
+    <p><em>Loading…</em></p>
+}
+else if (_rows.Count == 0)
+{
+    <p><em>No videos yet — enqueue a URL or follow a channel first.</em></p>
+}
+else
+{
+    <p class="text-muted">@_rows.Count video@(_rows.Count == 1 ? "" : "s").</p>
+    <table class="table table-sm table-hover align-middle">
+        <thead>
+            <tr>
+                <th>Video</th>
+                <th>Status</th>
+                <th class="text-end">Ideas</th>
+                <th class="text-end">Concepts</th>
+                <th>Created</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var r in _rows)
+            {
+                <tr style="cursor:pointer" @onclick="() => OpenDetails(r.Id)">
+                    <td>
+                        <a href="@($"/videos/{r.Id}")" @onclick:stopPropagation="true">
+                            @(string.IsNullOrWhiteSpace(r.Title) ? r.Url : r.Title)
+                        </a>
+                        @if (!string.IsNullOrWhiteSpace(r.Title))
+                        {
+                            <br /><a href="@r.Url" target="_blank" class="small text-muted" @onclick:stopPropagation="true">@r.Url</a>
+                        }
+                    </td>
+                    <td>@VideoStateLabel(r.Status)</td>
+                    <td class="text-end">
+                        @if (r.IdeaCount == 0)
+                        {
+                            <span class="text-muted">0</span>
+                        }
+                        else
+                        {
+                            <span>@r.IdeaCount</span>
+                            <small class="text-muted">(@r.Passed✓ / @r.Failed✗@(r.Unscored > 0 ? $" / {r.Unscored} unscored" : ""))</small>
+                        }
+                    </td>
+                    <td class="text-end">
+                        @if (r.ConceptCount == 0)
+                        {
+                            <span class="text-muted">0</span>
+                        }
+                        else
+                        {
+                            <span>@r.ActiveConceptCount active</span>
+                            <small class="text-muted">/ @r.ConceptCount total</small>
+                        }
+                    </td>
+                    <td><small class="text-muted">@r.CreatedAtUtc.ToString("u")</small></td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private IReadOnlyList<VideoRow> _rows = Array.Empty<VideoRow>();
+    private bool _busy = true;
+    private string? _error;
+
+    [Inject] private NavigationManager Nav { get; set; } = default!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _rows = await Browse.VideoRowsAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to load videos: {ex.Message}";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private void OpenDetails(int videoId) => Nav.NavigateTo($"/videos/{videoId}");
+
+    // Distinct states must read clearly — a legitimate "Processed · 0 ideas" is NOT a failure. Mirrors Queues.razor.
+    private static string VideoStateLabel(VideoJobStatus status) => status switch
+    {
+        VideoJobStatus.Pending => "Pending",
+        VideoJobStatus.InProgress => "In progress",
+        VideoJobStatus.Done => "Done",
+        VideoJobStatus.Failed => "Failed",
+        VideoJobStatus.NoTranscript => "No transcript",
+        VideoJobStatus.ProcessedNoIdeas => "Processed · 0 ideas",
+        _ => status.ToString(),
+    };
+}

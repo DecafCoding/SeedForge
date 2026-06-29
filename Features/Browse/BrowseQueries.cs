@@ -15,6 +15,18 @@ namespace SeedForge.Features.Browse
         bool? Passed, DateTime CreatedAtUtc);
 
     /// <summary>
+    /// One read-only row in the pool-wide videos table: a source video and its pipeline yield. <paramref name="Passed"/>/
+    /// <paramref name="Failed"/> split the idea pool by each idea's <em>latest</em> <see cref="Domain.IdeaScore"/> verdict;
+    /// <paramref name="Unscored"/> is the remainder (<paramref name="IdeaCount"/> = Passed + Failed + Unscored).
+    /// <paramref name="ConceptCount"/> is every concept built from this video's ideas; <paramref name="ActiveConceptCount"/>
+    /// counts only the currently-active versions.
+    /// </summary>
+    public sealed record VideoRow(
+        int Id, string Url, string? Title, Domain.VideoJobStatus Status,
+        int IdeaCount, int Passed, int Failed, int Unscored,
+        int ConceptCount, int ActiveConceptCount, DateTime CreatedAtUtc);
+
+    /// <summary>
     /// Shared read-only projections for the Phase 9–11 browse pages (Ideas · Videos · Video Details). Queries via the
     /// context directly (no repository) and shapes in memory — the data volume for a single-user tool is small and
     /// SQLite/EF will not translate every GroupBy+First shape. No write/command paths live here.
@@ -56,6 +68,54 @@ namespace SeedForge.Features.Browse
                     s?.PassedThreshold,                      // null ⇒ unscored
                     x.i.CreatedAtUtc);
             }).OrderByDescending(r => r.CreatedAtUtc).ThenByDescending(r => r.Id).ToList();
+        }
+
+        /// <summary>
+        /// Every video with its pipeline yield, newest-first. For each <see cref="Domain.Video"/> walks
+        /// Idea → Segment → Transcript → Video to attribute ideas (a <see cref="Domain.Concept"/> has no direct video FK,
+        /// so it is attributed the same way through its idea). Each idea is split by its <em>latest</em>
+        /// <see cref="Domain.IdeaScore"/> verdict into passed/failed/unscored; concepts are counted total and active.
+        /// A <see cref="Domain.VideoJobStatus.NoTranscript"/>/<see cref="Domain.VideoJobStatus.ProcessedNoIdeas"/> video
+        /// with no ideas yields zero counts — a legitimate outcome carried by <c>Status</c>, not an error.
+        /// </summary>
+        public async Task<IReadOnlyList<VideoRow>> VideoRowsAsync(CancellationToken ct = default)
+        {
+            var videos = await db.Videos.OrderByDescending(v => v.Id).ToListAsync(ct);
+
+            // Map ideaId -> videoId via Idea -> Segment -> Transcript -> Video (only transcripts tied to a video).
+            var ideaToVideo = await (
+                from i in db.Ideas
+                join seg in db.Segments on i.SegmentId equals seg.Id
+                join t in db.Transcripts on seg.TranscriptId equals t.Id
+                where t.VideoId != null
+                select new { IdeaId = i.Id, VideoId = t.VideoId!.Value }
+            ).ToListAsync(ct);
+
+            // Latest score's verdict per idea — materialize then group (GroupBy+First doesn't always translate).
+            var latestPass = (await db.IdeaScores.ToListAsync(ct))
+                .GroupBy(s => s.IdeaId)
+                .ToDictionary(g => g.Key, g => g.OrderByDescending(s => s.Id).First().PassedThreshold);
+
+            var ideaIdsByVideo = ideaToVideo
+                .GroupBy(x => x.VideoId)
+                .ToDictionary(g => g.Key, g => g.Select(x => x.IdeaId).ToList());
+            var videoIdByIdea = ideaToVideo.ToDictionary(x => x.IdeaId, x => x.VideoId);
+
+            var concepts = await db.Concepts.ToListAsync(ct);
+
+            return videos.Select(v =>
+            {
+                ideaIdsByVideo.TryGetValue(v.Id, out var ideaIds);
+                ideaIds ??= new();
+                int passed = ideaIds.Count(id => latestPass.TryGetValue(id, out var p) && p);
+                int failed = ideaIds.Count(id => latestPass.TryGetValue(id, out var p) && !p);
+                int unscored = ideaIds.Count - passed - failed;
+                var vConcepts = concepts.Where(c => videoIdByIdea.TryGetValue(c.IdeaId, out var vid) && vid == v.Id).ToList();
+                return new VideoRow(
+                    v.Id, v.Url, v.Title, v.Status,
+                    ideaIds.Count, passed, failed, unscored,
+                    vConcepts.Count, vConcepts.Count(c => c.IsActive), v.CreatedAtUtc);
+            }).ToList();
         }
     }
 }
