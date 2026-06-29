@@ -271,6 +271,265 @@ namespace SeedForge.UnitTests
             Assert.True(rows[0].Id > rows[1].Id); // newest (highest Id) first
         }
 
+        // ---- VideoDetailAsync ----
+
+        private void AddCall(string correlationId, string stage, int totalTokens, double cost, DateTime createdAt, bool success = true)
+        {
+            using var db = NewDb();
+            db.AiCallLogs.Add(new AiCallLog
+            {
+                CorrelationId = correlationId,
+                Stage = stage,
+                Slot = ModelSlot.Extraction,
+                Model = "m",
+                TotalTokens = totalTokens,
+                EstimatedCost = cost,
+                Success = success,
+                CreatedAtUtc = createdAt,
+            });
+            db.SaveChanges();
+        }
+
+        [Fact]
+        public async Task VideoDetailAsync_returns_null_for_unknown_id()
+        {
+            using var db = NewDb();
+            Assert.Null(await new BrowseQueries(db).VideoDetailAsync(999_999));
+        }
+
+        [Fact]
+        public async Task VideoDetailAsync_returns_full_graph_counts_and_concepts()
+        {
+            var passed1 = SeedVideoIdea("p1", Now);
+            int videoId = VideoIdForIdea(passed1);
+            AddScore(passed1, novelty: 0.9, passed: true, Now);
+            var passed2 = SeedVideoIdeaForVideo("p2", videoId, Now);
+            AddScore(passed2, novelty: 0.8, passed: true, Now);
+            var failed1 = SeedVideoIdeaForVideo("f1", videoId, Now);
+            AddScore(failed1, novelty: 0.1, passed: false, Now);
+            var unscored1 = SeedVideoIdeaForVideo("u1", videoId, Now); // no score
+
+            AddConcept(passed1, isActive: false, Now);
+            AddConcept(passed1, isActive: true, Now.AddMinutes(1));
+
+            using var db = NewDb();
+            var d = await new BrowseQueries(db).VideoDetailAsync(videoId);
+
+            Assert.NotNull(d);
+            Assert.Equal(videoId, d!.Id);
+            Assert.Equal(4, d.SegmentCount);   // one segment per seeded idea
+            Assert.Equal(4, d.IdeaCount);
+            Assert.Equal(2, d.Passed);
+            Assert.Equal(1, d.Failed);
+            Assert.Equal(1, d.Unscored);
+            Assert.Equal(2, d.Concepts.Count);
+            Assert.Contains(d.Concepts, c => c.IsActive);
+        }
+
+        [Fact]
+        public async Task VideoDetailAsync_parses_clock_duration_from_raw_json()
+        {
+            int ideaId = SeedVideoIdea("clock", Now);
+            int videoId = VideoIdForIdea(ideaId);
+            using (var db = NewDb())
+            {
+                var t = db.Transcripts.First(t => t.VideoId == videoId);
+                t.RawDatasetItemJson = """{ "duration": "1:02:03" }""";
+                db.SaveChanges();
+            }
+
+            using var db2 = NewDb();
+            var d = await new BrowseQueries(db2).VideoDetailAsync(videoId);
+
+            Assert.Equal(3723, d!.DurationSeconds); // 1*3600 + 2*60 + 3
+        }
+
+        [Fact]
+        public async Task VideoDetailAsync_parses_numeric_seconds_duration_from_raw_json()
+        {
+            int ideaId = SeedVideoIdea("secs", Now);
+            int videoId = VideoIdForIdea(ideaId);
+            using (var db = NewDb())
+            {
+                var t = db.Transcripts.First(t => t.VideoId == videoId);
+                t.RawDatasetItemJson = """{ "lengthSeconds": 142 }""";
+                db.SaveChanges();
+            }
+
+            using var db2 = NewDb();
+            var d = await new BrowseQueries(db2).VideoDetailAsync(videoId);
+
+            Assert.Equal(142, d!.DurationSeconds);
+        }
+
+        [Fact]
+        public async Task VideoDetailAsync_prefers_stored_DurationSeconds_over_raw_json()
+        {
+            int ideaId = SeedVideoIdea("stored-dur", Now);
+            int videoId = VideoIdForIdea(ideaId);
+            using (var db = NewDb())
+            {
+                var v = db.Videos.First(v => v.Id == videoId);
+                v.DurationSeconds = 999;
+                var t = db.Transcripts.First(t => t.VideoId == videoId);
+                t.RawDatasetItemJson = """{ "duration": "1:02:03" }""";
+                db.SaveChanges();
+            }
+
+            using var db2 = NewDb();
+            var d = await new BrowseQueries(db2).VideoDetailAsync(videoId);
+
+            Assert.Equal(999, d!.DurationSeconds); // Phase 8 column wins
+        }
+
+        [Fact]
+        public async Task VideoDetailAsync_duration_null_when_neither_source_has_it()
+        {
+            int ideaId = SeedVideoIdea("no-dur", Now);
+            int videoId = VideoIdForIdea(ideaId); // raw json defaults to "" — no duration key
+
+            using var db = NewDb();
+            var d = await new BrowseQueries(db).VideoDetailAsync(videoId);
+
+            Assert.Null(d!.DurationSeconds);
+        }
+
+        [Fact]
+        public async Task VideoDetailAsync_derives_processed_time_from_latest_ai_call()
+        {
+            // Seed an idea with a known correlation id, then two calls; the latest call time wins.
+            int videoId;
+            using (var db = NewDb())
+            {
+                var video = new Video { YouTubeVideoId = "yt-trace", Url = "https://youtu.be/trace", Title = "Traced", Status = VideoJobStatus.Done, CreatedAtUtc = Now };
+                db.Videos.Add(video);
+                db.SaveChanges();
+                videoId = video.Id;
+                var transcript = new Transcript { VideoId = videoId, PlainText = "t", CreatedAtUtc = Now };
+                db.Transcripts.Add(transcript);
+                db.SaveChanges();
+                var segment = new Segment { TranscriptId = transcript.Id, OrdinalIndex = 0, StartChar = 0, EndChar = 1, Text = "s", CreatedAtUtc = Now };
+                db.Segments.Add(segment);
+                db.SaveChanges();
+                db.Ideas.Add(new Idea { SegmentId = segment.Id, Premise = "p", CorrelationId = "corr-1", CreatedAtUtc = Now });
+                db.SaveChanges();
+            }
+            AddCall("corr-1", "Extraction", totalTokens: 10, cost: 0.01, Now.AddMinutes(2));
+            var latest = Now.AddMinutes(9);
+            AddCall("corr-1", "Concept", totalTokens: 20, cost: 0.02, latest);
+
+            using var db2 = NewDb();
+            var d = await new BrowseQueries(db2).VideoDetailAsync(videoId);
+
+            Assert.True(d!.IsProcessedDerived);
+            Assert.Equal(latest, d.DateProcessedUtc);
+            Assert.Equal(2, d.AiCalls.Count);
+            Assert.Equal(30, d.TotalTokens);
+            Assert.Equal(0.03, d.TotalCost, precision: 6);
+        }
+
+        [Fact]
+        public async Task VideoDetailAsync_prefers_stored_processed_time_and_clears_derived_flag()
+        {
+            var stored = Now.AddMinutes(42);
+            int ideaId = SeedVideoIdea("stored-proc", Now);
+            int videoId = VideoIdForIdea(ideaId);
+            using (var db = NewDb())
+            {
+                var v = db.Videos.First(v => v.Id == videoId);
+                v.ProcessedAtUtc = stored;
+                db.SaveChanges();
+            }
+
+            using var db2 = NewDb();
+            var d = await new BrowseQueries(db2).VideoDetailAsync(videoId);
+
+            Assert.False(d!.IsProcessedDerived);
+            Assert.Equal(stored, d.DateProcessedUtc);
+        }
+
+        [Fact]
+        public async Task VideoDetailAsync_falls_back_to_transcript_time_when_no_ai_calls()
+        {
+            var transcriptTime = Now.AddHours(3);
+            int ideaId = SeedVideoIdea("no-calls", transcriptTime);
+            int videoId = VideoIdForIdea(ideaId);
+
+            using var db = NewDb();
+            var d = await new BrowseQueries(db).VideoDetailAsync(videoId);
+
+            Assert.True(d!.IsProcessedDerived);
+            Assert.Equal(transcriptTime, d.DateProcessedUtc);
+            Assert.Empty(d.AiCalls);
+        }
+
+        [Fact]
+        public async Task VideoDetailAsync_resolves_channel_via_channel_then_transcript_fallback()
+        {
+            // Video tied to a Channel row resolves the channel title.
+            int channelId;
+            int videoWithChannel;
+            using (var db = NewDb())
+            {
+                var ch = new Channel { YouTubeChannelId = "UCxyz", Title = "Cosmic Channel", UploadsPlaylistId = "UUxyz", AddedAtUtc = Now };
+                db.Channels.Add(ch);
+                db.SaveChanges();
+                channelId = ch.Id;
+                var video = new Video { YouTubeVideoId = "yt-ch", ChannelId = channelId, Url = "https://youtu.be/ch", Status = VideoJobStatus.Done, CreatedAtUtc = Now };
+                db.Videos.Add(video);
+                db.SaveChanges();
+                videoWithChannel = video.Id;
+                db.Transcripts.Add(new Transcript { VideoId = videoWithChannel, PlainText = "t", ChannelName = "Raw Name", CreatedAtUtc = Now });
+                db.SaveChanges();
+            }
+
+            using var db2 = NewDb();
+            var d = await new BrowseQueries(db2).VideoDetailAsync(videoWithChannel);
+            Assert.Equal("Cosmic Channel", d!.Channel); // Channel row wins
+
+            // A channel-less video falls back to the transcript's channel name.
+            int videoNoChannel;
+            using (var db = NewDb())
+            {
+                var video = new Video { YouTubeVideoId = "yt-noch", Url = "https://youtu.be/noch", Status = VideoJobStatus.Done, CreatedAtUtc = Now };
+                db.Videos.Add(video);
+                db.SaveChanges();
+                videoNoChannel = video.Id;
+                db.Transcripts.Add(new Transcript { VideoId = videoNoChannel, PlainText = "t", ChannelName = "Fallback Name", CreatedAtUtc = Now });
+                db.SaveChanges();
+            }
+
+            using var db3 = NewDb();
+            var d2 = await new BrowseQueries(db3).VideoDetailAsync(videoNoChannel);
+            Assert.Equal("Fallback Name", d2!.Channel);
+        }
+
+        [Fact]
+        public async Task VideoDetailAsync_transcriptless_video_renders_identity_with_empty_yield()
+        {
+            int videoId;
+            using (var db = NewDb())
+            {
+                var video = new Video { YouTubeVideoId = "yt-none", Url = "https://youtu.be/none", Title = "Dud", Status = VideoJobStatus.NoTranscript, CreatedAtUtc = Now };
+                db.Videos.Add(video);
+                db.SaveChanges();
+                videoId = video.Id;
+            }
+
+            using var db2 = NewDb();
+            var d = await new BrowseQueries(db2).VideoDetailAsync(videoId);
+
+            Assert.NotNull(d);
+            Assert.Equal("Dud", d!.Title);
+            Assert.Equal(VideoJobStatus.NoTranscript, d.Status);
+            Assert.Equal(0, d.SegmentCount);
+            Assert.Equal(0, d.IdeaCount);
+            Assert.Null(d.DurationSeconds);
+            Assert.Null(d.DateProcessedUtc);
+            Assert.Empty(d.Concepts);
+            Assert.Empty(d.AiCalls);
+        }
+
         public void Dispose() => _connection.Dispose();
     }
 }

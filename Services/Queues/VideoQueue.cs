@@ -90,6 +90,11 @@ namespace SeedForge.Services.Queues
             var job = await db.Videos.FirstOrDefaultAsync(v => v.Id == videoId, ct)
                 ?? throw new InvalidOperationException($"Video {videoId} not found");
             job.Status = status;
+            // Stamp the processed-time on a successful terminal outcome so the detail page reads it exactly (not derived).
+            if (status is VideoJobStatus.Done or VideoJobStatus.ProcessedNoIdeas or VideoJobStatus.NoTranscript)
+            {
+                job.ProcessedAtUtc = DateTime.UtcNow;
+            }
             await db.SaveChangesAsync(ct);
         }
 

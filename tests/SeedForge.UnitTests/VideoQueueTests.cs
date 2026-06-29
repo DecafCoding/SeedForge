@@ -85,6 +85,35 @@ namespace SeedForge.UnitTests
             Assert.Equal(second, claimed!.Id);
         }
 
+        [Theory]
+        [InlineData(VideoJobStatus.Done)]
+        [InlineData(VideoJobStatus.ProcessedNoIdeas)]
+        [InlineData(VideoJobStatus.NoTranscript)]
+        public async Task Complete_with_terminal_outcome_stamps_processed_time(VideoJobStatus status)
+        {
+            var id = await NewQueue().EnqueueAsync("abc12345678");
+            await NewQueue().ClaimNextAsync();
+
+            await NewQueue().CompleteAsync(id, status);
+
+            using var read = _h.NewDb();
+            var v = read.Videos.Single(x => x.Id == id);
+            Assert.Equal(status, v.Status);
+            Assert.NotNull(v.ProcessedAtUtc);
+        }
+
+        [Fact]
+        public async Task Complete_with_failed_status_does_not_stamp_processed_time()
+        {
+            var id = await NewQueue().EnqueueAsync("abc12345678");
+            await NewQueue().ClaimNextAsync();
+
+            await NewQueue().CompleteAsync(id, VideoJobStatus.Failed);
+
+            using var read = _h.NewDb();
+            Assert.Null(read.Videos.Single(x => x.Id == id).ProcessedAtUtc);
+        }
+
         public void Dispose() => _h.Dispose();
     }
 }
