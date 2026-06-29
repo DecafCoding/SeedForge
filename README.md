@@ -20,6 +20,8 @@ Phase 3 (Versioning, Regeneration & the Compare Loop) is complete: switchable, n
 
 Phase 4 (Real Ingestion — Single Video) is complete: a YouTube URL becomes concepts end to end with no manual transcript. A typed **`ApifyClient`** (`Services/Apify/`) posts to the Apify `run-sync-get-dataset-items` endpoint for the `streamers~youtube-scraper` actor; **`ApifyIngestionService`** resolves the video id (via the shared `Services/YouTube/YouTubeUrl` helper), runs the actor, and parses the first dataset item defensively (subtitles / transcript / captions / segments) into transcript text + title + channel + the raw item + best-effort cost. The **IngestTranscript** slice (`Features/Ingestion/`) persists the immutable `Video` + `Transcript`, recording **Done / NoTranscript / Failed** distinctly (a captionless video is *not* a failure), idempotent on the YouTube id so an already-fetched video is never re-paid. `PipelineRunner` gains `RunFromTranscriptAsync` (the reusable four-stage core) and `RunFromUrlAsync` (ingest → run), and the **`/pipeline`** page accepts a YouTube URL alongside the paste-text path.
 
+Phase 6 (Discovery — Close the Loop) is complete: an upload on a followed channel becomes a concept entirely on its own. A typed **`YouTubeDataClient`** (`Services/YouTube/`) resolves a channel reference — a `UC…` id, a `/channel/` URL, an `@handle` (via `forHandle`), or a legacy custom `/c/`·`/user/` reference (via a `search.list` fallback) — to its id, title, and uploads playlist, and lists recent uploads from that playlist (`ChannelRef.Parse` classifies the reference; the key is a query param on every call). A **`ChannelLibrary`** (`Features/Discovery/`) adds / lists / removes `Channel` rows deduped by a unique channel-id index, storing the uploads playlist id at add-time so each poll is a single call. The **PollChannels** slice lists recent ids, dedupes against existing `Video` rows, enqueues only the genuinely new ones to the `VideoQueue`, and stamps `LastPolledUtc` (dedupe by id is the correctness guarantee — no AI or transcript work). A daily **DiscoveryWorker** (`Workers/`) reuses the Phase 5 worker pattern (scope per tick, pause/wake, extracted `ProcessOnceAsync`, paused on boot) to poll the whole library, catching a per-channel failure so one bad channel never starves the rest. A **`/channels`** page manages the library and offers poll-now. Every automated test uses a stubbed handler; a real poll is key-gated and consumes YouTube quota.
+
 Phase 5 (Queues & Workers — Unattended Runs) is complete: SeedForge now runs without you. Two durable, DB-backed queues (`Services/Queues/`) sit over the existing rows — a `Video` row *is* the video job, a `ConceptJob` row is the concept job — each with atomic claim (Pending→InProgress in a transaction), exponential **backoff** to a terminal `Failed` after `MaxAttempts`, pending-count, and **process-now** (jump the line + wake the worker). Two **`BackgroundService`** workers (`Workers/`) drain them on independent cadences: the **ProcessingWorker** ingests → segments → extracts → scores and **stops at the scoring seam**, enqueuing one `ConceptJob` per survivor (`Video` set `Done`, or `ProcessedNoIdeas` when zero survive — never built inline), while the **ConceptWorker** builds exactly one active `Concept` per job on its own cadence (honoring an optional profile/slot override), so a slow/paid Concept model never stalls the cheap local processing loop. Each worker is a singleton that opens a DI scope per tick and delegates to an extracted, unit-testable `ProcessOnceAsync`; a job error reschedules with backoff and never crashes the host. A `WorkerControl` singleton provides per-worker **pause/resume** and a wake signal. A bare **`/queues`** page shows pending counts + drain-time ETA with pause/resume, process-now, and URL enqueue. **Both workers start paused on boot** to avoid surprise Apify/model spend.
 
 ## Tech Stack
@@ -39,7 +41,7 @@ SeedForge/                     # project + git root (Solution: SeedForge.slnx)
 ├─ Features/                   # vertical slices (Segmentation, Extraction, Scoring, Concepts, Config, Observability, Ingestion)
 ├─ Pipeline/                    # PipelineRunner orchestrator (driving adapter)
 ├─ Services/                   # shared services (Ai/, Apify/, YouTube/, Queues/)
-├─ Workers/                    # background workers (ProcessingWorker, ConceptWorker) + WorkerControl
+├─ Workers/                    # background workers (ProcessingWorker, ConceptWorker, DiscoveryWorker) + WorkerControl
 └─ tests/
    ├─ SeedForge.ArchitectureTests/   # NetArchTest boundary rules
    └─ SeedForge.UnitTests/           # xUnit unit tests (AI plumbing, stubbed HTTP)
@@ -155,12 +157,23 @@ Two background workers run inside the web app and drain durable, DB-backed queue
 "Workers": {
   "ProcessingIntervalSeconds": 1800,
   "ConceptIntervalSeconds": 60,
+  "DiscoveryIntervalSeconds": 86400,
   "MaxAttempts": 5,
   "BackoffBaseSeconds": 30
 }
 ```
 
-- `ProcessingIntervalSeconds` / `ConceptIntervalSeconds` — how often each worker wakes (a process-now or enqueue wakes it early).
+- `ProcessingIntervalSeconds` / `ConceptIntervalSeconds` / `DiscoveryIntervalSeconds` — how often each worker wakes (a process-now or enqueue wakes it early).
 - `MaxAttempts` — failed jobs retry with exponential backoff (`BackoffBaseSeconds × 2^attempt`); after this many attempts a job becomes terminal `Failed`.
 
 **Both workers start paused on boot** (to avoid surprise Apify/model spend). Use the **`/queues`** page to see pending counts + drain-time ETA, resume/pause each worker, prioritize a specific item (process-now), and add a YouTube URL to the processing queue. The Processing worker stops at scoring and enqueues a concept job per survivor; the Concept worker develops them on its own cadence — so a slow Concept model never blocks processing. No automated test runs the timed host loop or hits Apify/the model.
+
+### Discovery (Channels)
+
+The **DiscoveryWorker** polls a library of followed YouTube channels and enqueues new uploads — closing the loop so a new video becomes a concept with no manual URL. It uses the **YouTube Data API v3**; non-secret defaults ship under the `YouTube` section of `appsettings.json` (`BaseUrl`, `MaxResults`), and the **API key is blank in source** — supply it via user-secrets:
+
+```bash
+dotnet user-secrets set "YouTube:ApiKey" "AIza..."
+```
+
+The Discovery worker also **starts paused on boot** and runs on `Workers:DiscoveryIntervalSeconds` (default daily). Use the **`/channels`** page to add a channel (a `UC…` id, a `/channel/` URL, or an `@handle`), list / remove channels, resume the worker, or **poll now** for an on-demand poll. A poll lists each channel's recent uploads, enqueues only the ids with no existing `Video` row to the processing queue, and stamps `LastPolledUtc` — no transcript or AI work. Every automated test stubs the YouTube API; a real poll consumes YouTube quota.

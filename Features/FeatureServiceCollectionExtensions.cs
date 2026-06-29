@@ -1,5 +1,6 @@
 using SeedForge.Features.Concepts;
 using SeedForge.Features.Config;
+using SeedForge.Features.Discovery;
 using SeedForge.Features.Extraction;
 using SeedForge.Features.Ingestion;
 using SeedForge.Features.Observability;
@@ -24,6 +25,10 @@ namespace SeedForge.Features
 
             // Ingestion slice (Phase 4): URL/id → persisted Video + Transcript with status.
             services.AddScoped<IngestTranscriptHandler>();
+
+            // Discovery (Phase 6): channel library + the poll slice.
+            services.AddScoped<ChannelLibrary>();
+            services.AddScoped<PollChannelsHandler>();
 
             // Versioning / compare-loop operations (Phase 3): each co-located with the slice it reuses.
             services.AddScoped<ProfileService>();

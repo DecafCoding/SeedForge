@@ -10,6 +10,7 @@ using SeedForge.Features.Config;
 using SeedForge.Services.Ai;
 using SeedForge.Services.Apify;
 using SeedForge.Services.Queues;
+using SeedForge.Services.YouTube;
 using SeedForge.Workers;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -51,6 +52,9 @@ builder.Services.AddAiServices(builder.Configuration);
 // Apify ingestion boundary: typed client + ingestion service.
 builder.Services.AddApifyServices(builder.Configuration);
 
+// YouTube Data API boundary (Phase 6): typed client for channel resolution + recent-uploads listing.
+builder.Services.AddYouTube(builder.Configuration);
+
 // Pipeline slices, options, and the orchestrator.
 builder.Services.AddFeatures(builder.Configuration);
 
@@ -68,6 +72,10 @@ builder.Services.AddHostedService<ProcessingWorker>();
 // Concept worker: drains the concept queue (build one concept per job) on its own cadence.
 builder.Services.AddScoped<ConceptIteration>();
 builder.Services.AddHostedService<ConceptWorker>();
+
+// Discovery worker (Phase 6): polls the channel library daily, enqueuing new uploads.
+builder.Services.AddScoped<DiscoveryIteration>();
+builder.Services.AddHostedService<DiscoveryWorker>();
 
 var app = builder.Build();
 
