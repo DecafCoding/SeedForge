@@ -46,6 +46,7 @@ namespace SeedForge.Data
                 .HasOne<Video>()
                 .WithOne()
                 .HasForeignKey<Transcript>(t => t.VideoId)
+                .IsRequired(false) // pasted transcripts have no backing Video
                 .OnDelete(DeleteBehavior.Restrict);
 
             builder.Entity<Segment>()
