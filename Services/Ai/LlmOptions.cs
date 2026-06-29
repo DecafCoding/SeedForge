@@ -21,6 +21,12 @@ namespace SeedForge.Services.Ai
         /// <summary>Reasoning effort (e.g. "low"/"medium"/"high"); omitted from the request when null.</summary>
         public string? ReasoningEffort { get; set; }
 
+        /// <summary>
+        /// How structured (typed) completions request JSON. Defaults to <see cref="StructuredOutputMode.Prompt"/> so
+        /// local models that can't honor a strict <c>json_schema</c> response_format still work.
+        /// </summary>
+        public StructuredOutputMode StructuredOutput { get; set; } = StructuredOutputMode.Prompt;
+
         /// <summary>Returns a shallow copy so callers can mutate a per-call instance without leaking into shared config.</summary>
         public LlmOptions Copy() => new()
         {
@@ -30,6 +36,7 @@ namespace SeedForge.Services.Ai
             TimeoutSeconds = TimeoutSeconds,
             Temperature = Temperature,
             ReasoningEffort = ReasoningEffort,
+            StructuredOutput = StructuredOutput,
         };
     }
 }

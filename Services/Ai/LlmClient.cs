@@ -41,28 +41,46 @@ namespace SeedForge.Services.Ai
             return new LlmResult<string>(content.Trim(), raw, parsed.Usage);
         }
 
-        /// <summary>Strict-structured completion: deserializes the response content into <typeparamref name="T"/>.</summary>
+        /// <summary>
+        /// Structured completion: deserializes the response content into <typeparamref name="T"/>. The request strategy
+        /// follows <see cref="LlmOptions.StructuredOutput"/> — strict <c>json_schema</c> only when explicitly chosen;
+        /// otherwise the schema is described in the prompt and the reply is parsed defensively (tolerant of models that
+        /// wrap JSON in markdown fences or surrounding prose).
+        /// </summary>
         internal async Task<LlmResult<T>> CompleteStructuredRawAsync<T>(
             LlmOptions options, IReadOnlyList<ChatMessage> messages, AiCallContext context, CancellationToken ct = default)
         {
-            var responseFormat = new JsonObject
+            var schema = JsonSchemaGenerator.ForType<T>();
+
+            JsonObject? responseFormat = options.StructuredOutput switch
             {
-                ["type"] = "json_schema",
-                ["json_schema"] = new JsonObject
+                StructuredOutputMode.JsonSchema => new JsonObject
                 {
-                    ["name"] = typeof(T).Name,
-                    ["strict"] = true,
-                    ["schema"] = JsonSchemaGenerator.ForType<T>(),
+                    ["type"] = "json_schema",
+                    ["json_schema"] = new JsonObject
+                    {
+                        ["name"] = typeof(T).Name,
+                        ["strict"] = true,
+                        ["schema"] = schema,
+                    },
                 },
+                StructuredOutputMode.JsonObject => new JsonObject { ["type"] = "json_object" },
+                _ => null,
             };
 
-            var (parsed, raw) = await PostAsync(options, BuildBody(options, messages, responseFormat), ct);
+            // Strict json_schema servers constrain generation themselves; every other mode must ask in the prompt.
+            var effectiveMessages = options.StructuredOutput == StructuredOutputMode.JsonSchema
+                ? messages
+                : WithSchemaInstruction(messages, typeof(T).Name, schema);
+
+            var (parsed, raw) = await PostAsync(options, BuildBody(options, effectiveMessages, responseFormat), ct);
             var content = ExtractContent(parsed, raw);
+            var json = ExtractJson(content);
 
             T? value;
             try
             {
-                value = JsonSerializer.Deserialize<T>(content, Json);
+                value = JsonSerializer.Deserialize<T>(json, Json);
             }
             catch (JsonException ex)
             {
@@ -75,6 +93,78 @@ namespace SeedForge.Services.Ai
             }
 
             return new LlmResult<T>(value, raw, parsed.Usage);
+        }
+
+        /// <summary>
+        /// Folds a "respond with only JSON matching this schema" instruction into the system message (or prepends one),
+        /// so prompt/json_object modes still steer the model toward a parseable, schema-shaped reply.
+        /// </summary>
+        private static IReadOnlyList<ChatMessage> WithSchemaInstruction(IReadOnlyList<ChatMessage> messages, string name, JsonNode schema)
+        {
+            var instruction =
+                $"You must respond with a single JSON value that conforms to this JSON Schema for \"{name}\". " +
+                "Output only the raw JSON — no markdown code fences, no commentary, and no text before or after it.\n\n" +
+                "JSON Schema:\n" + schema.ToJsonString();
+
+            var list = new List<ChatMessage>(messages);
+            var systemIndex = list.FindIndex(m => m.Role == "system");
+            if (systemIndex >= 0)
+            {
+                list[systemIndex] = list[systemIndex] with { Content = list[systemIndex].Content + "\n\n" + instruction };
+            }
+            else
+            {
+                list.Insert(0, new ChatMessage("system", instruction));
+            }
+
+            return list;
+        }
+
+        /// <summary>
+        /// Recovers the JSON payload from a model reply that may be fenced (```json … ```) or surrounded by prose:
+        /// strips a leading/trailing code fence, then narrows to the outermost object/array. Returns the content
+        /// unchanged when no JSON delimiters are present (so deserialization surfaces a clear error).
+        /// </summary>
+        private static string ExtractJson(string content)
+        {
+            var text = content.Trim();
+
+            if (text.StartsWith("```", StringComparison.Ordinal))
+            {
+                var firstNewline = text.IndexOf('\n');
+                if (firstNewline >= 0)
+                {
+                    text = text[(firstNewline + 1)..];
+                }
+                var closingFence = text.LastIndexOf("```", StringComparison.Ordinal);
+                if (closingFence >= 0)
+                {
+                    text = text[..closingFence];
+                }
+                text = text.Trim();
+            }
+
+            var brace = text.IndexOf('{');
+            var bracket = text.IndexOf('[');
+            int start;
+            char close;
+            if (brace >= 0 && (bracket < 0 || brace < bracket))
+            {
+                start = brace;
+                close = '}';
+            }
+            else if (bracket >= 0)
+            {
+                start = bracket;
+                close = ']';
+            }
+            else
+            {
+                return text;
+            }
+
+            var end = text.LastIndexOf(close);
+            return end > start ? text[start..(end + 1)] : text;
         }
 
         /// <summary>Builds the request body, omitting temperature/reasoning_effort when null (reasoning-locked models reject them).</summary>
