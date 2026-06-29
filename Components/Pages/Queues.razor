@@ -1,0 +1,173 @@
+@page "/queues"
+@rendermode InteractiveServer
+@using Microsoft.Extensions.Options
+@using SeedForge.Services.Queues
+@using SeedForge.Workers
+@inject VideoQueue VideoQueue
+@inject ConceptQueue ConceptQueue
+@inject WorkerControl Control
+@inject IOptions<WorkerOptions> WorkerOptions
+
+<PageTitle>Queues</PageTitle>
+
+<h1>Queues</h1>
+<p>Bare operability surface for the unattended workers: pending counts, drain-time ETA, pause/resume, process-now, and URL enqueue. Both workers start <strong>paused</strong> on boot — resume them here when you're ready to spend on Apify / the model.</p>
+
+@if (_error is not null)
+{
+    <div class="alert alert-danger">@_error</div>
+}
+@if (_message is not null)
+{
+    <div class="alert alert-success">@_message</div>
+}
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card mb-3">
+            <div class="card-body">
+                <h5 class="card-title">Processing queue (videos)</h5>
+                <p class="card-text">
+                    Pending: <strong>@_pendingVideos</strong><br />
+                    Drain ETA: <strong>@FormatEta(_pendingVideos, _opts.ProcessingIntervalSeconds)</strong>
+                    <small class="text-muted">(@_opts.ProcessingIntervalSeconds s / item)</small><br />
+                    Status: <strong>@(Control.IsPaused(Worker.Processing) ? "Paused" : "Running")</strong>
+                </p>
+                <button class="btn btn-sm btn-primary me-2" disabled="@_busy" @onclick="() => Toggle(Worker.Processing)">
+                    @(Control.IsPaused(Worker.Processing) ? "Resume" : "Pause")
+                </button>
+                <div class="input-group input-group-sm mt-2" style="max-width:20rem">
+                    <input class="form-control" type="number" placeholder="video id" @bind="_processVideoId" disabled="@_busy" />
+                    <button class="btn btn-outline-secondary" disabled="@(_busy || _processVideoId is null)" @onclick="ProcessVideoNow">Process now</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card mb-3">
+            <div class="card-body">
+                <h5 class="card-title">Concept queue (jobs)</h5>
+                <p class="card-text">
+                    Pending: <strong>@_pendingConcepts</strong><br />
+                    Drain ETA: <strong>@FormatEta(_pendingConcepts, _opts.ConceptIntervalSeconds)</strong>
+                    <small class="text-muted">(@_opts.ConceptIntervalSeconds s / item)</small><br />
+                    Status: <strong>@(Control.IsPaused(Worker.Concept) ? "Paused" : "Running")</strong>
+                </p>
+                <button class="btn btn-sm btn-primary me-2" disabled="@_busy" @onclick="() => Toggle(Worker.Concept)">
+                    @(Control.IsPaused(Worker.Concept) ? "Resume" : "Pause")
+                </button>
+                <div class="input-group input-group-sm mt-2" style="max-width:20rem">
+                    <input class="form-control" type="number" placeholder="job id" @bind="_processJobId" disabled="@_busy" />
+                    <button class="btn btn-outline-secondary" disabled="@(_busy || _processJobId is null)" @onclick="ProcessConceptNow">Process now</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<hr />
+
+<h2>Add a YouTube URL to the processing queue</h2>
+<div class="input-group mb-3" style="max-width:40rem">
+    <input class="form-control" placeholder="https://www.youtube.com/watch?v=…" @bind="_urlInput" disabled="@_busy" />
+    <button class="btn btn-primary" disabled="@(_busy || string.IsNullOrWhiteSpace(_urlInput))" @onclick="EnqueueUrl">
+        @(_busy ? "Working…" : "Add to queue")
+    </button>
+</div>
+
+<button class="btn btn-link" disabled="@_busy" @onclick="RefreshAsync">Refresh counts</button>
+
+@code {
+    private WorkerOptions _opts = new();
+    private int _pendingVideos;
+    private int _pendingConcepts;
+    private string _urlInput = string.Empty;
+    private int? _processVideoId;
+    private int? _processJobId;
+    private bool _busy;
+    private string? _error;
+    private string? _message;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _opts = WorkerOptions.Value;
+        await RefreshAsync();
+    }
+
+    private async Task RefreshAsync()
+    {
+        _error = null;
+        try
+        {
+            // Sequential awaits: VideoQueue and ConceptQueue share one scoped DbContext per render.
+            _pendingVideos = await VideoQueue.CountPendingAsync();
+            _pendingConcepts = await ConceptQueue.CountPendingAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to load queue counts: {ex.Message}";
+        }
+    }
+
+    private void Toggle(Worker worker)
+    {
+        if (Control.IsPaused(worker)) Control.Resume(worker);
+        else Control.Pause(worker);
+    }
+
+    private async Task EnqueueUrl()
+    {
+        await RunAsync(async () =>
+        {
+            var id = await VideoQueue.EnqueueAsync(_urlInput);
+            _message = $"Enqueued video #{id}.";
+            _urlInput = string.Empty;
+        });
+    }
+
+    private async Task ProcessVideoNow()
+    {
+        await RunAsync(async () =>
+        {
+            await VideoQueue.ProcessNowAsync(_processVideoId!.Value);
+            _message = $"Video #{_processVideoId} prioritized; Processing worker woken.";
+        });
+    }
+
+    private async Task ProcessConceptNow()
+    {
+        await RunAsync(async () =>
+        {
+            await ConceptQueue.ProcessNowAsync(_processJobId!.Value);
+            _message = $"Job #{_processJobId} prioritized; Concept worker woken.";
+        });
+    }
+
+    private async Task RunAsync(Func<Task> action)
+    {
+        _busy = true;
+        _error = null;
+        _message = null;
+        try
+        {
+            await action();
+            await RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private static string FormatEta(int pending, int intervalSeconds)
+    {
+        if (pending == 0) return "—";
+        var eta = TimeSpan.FromSeconds((long)pending * intervalSeconds);
+        return eta.TotalHours >= 1 ? $"{(int)eta.TotalHours}h {eta.Minutes}m" : $"{eta.Minutes}m {eta.Seconds}s";
+    }
+}

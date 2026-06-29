@@ -9,7 +9,9 @@ using SeedForge.Features.Ingestion;
 using SeedForge.Features.Scoring;
 using SeedForge.Features.Segmentation;
 using SeedForge.Pipeline;
+using SeedForge.Services.Queues;
 using SeedForge.UnitTests.Fakes;
+using SeedForge.Workers;
 
 namespace SeedForge.UnitTests
 {
@@ -24,6 +26,7 @@ namespace SeedForge.UnitTests
             var ingest = new IngestTranscriptHandler(
                 db, apify ?? FakeApifyIngestionService.NoTranscript("unused00000"),
                 NullLogger<IngestTranscriptHandler>.Instance);
+            var conceptQueue = new ConceptQueue(db, Options.Create(new WorkerOptions()), new WorkerControl(), NullLogger<ConceptQueue>.Instance);
             return new PipelineRunner(
                 db,
                 ingest,
@@ -31,6 +34,7 @@ namespace SeedForge.UnitTests
                 new ExtractIdeasHandler(db, fake, _h.Resolver, NullLogger<ExtractIdeasHandler>.Instance),
                 new ScoreIdeasHandler(db, fake, _h.Resolver, options, NullLogger<ScoreIdeasHandler>.Instance),
                 new BuildConceptHandler(db, fake, _h.Resolver, NullLogger<BuildConceptHandler>.Instance),
+                conceptQueue,
                 NullLogger<PipelineRunner>.Instance);
         }
 
@@ -144,6 +148,81 @@ namespace SeedForge.UnitTests
             using var read = _h.NewDb();
             Assert.Equal(VideoJobStatus.NoTranscript, read.Videos.Single(v => v.Id == result.VideoId).Status);
             Assert.Empty(read.Segments);
+            Assert.Empty(read.Concepts);
+        }
+
+        [Fact]
+        public async Task ProcessVideoJobAsync_stops_at_scoring_and_enqueues_one_job_per_survivor()
+        {
+            const string transcriptText = "First we cover terraforming Mars over generations. " +
+                                          "Then we explore a rogue AI that runs a starship alone.";
+            var apify = FakeApifyIngestionService.WithTranscript("abc12345678", transcriptText, title: "Real Video");
+
+            // Two ideas, both survive scoring ⇒ two enqueued ConceptJobs, zero concepts built.
+            var fake = new FakeLlmClient()
+                .SetStructured(new SegmentationResponse(new()
+                {
+                    new SegmentBoundaryDto(0, "Terraforming", "First we cover terraforming Mars"),
+                    new SegmentBoundaryDto(1, "Rogue AI", "Then we explore a rogue AI"),
+                }))
+                .SetStructured(new ExtractIdeasResponse(new() { new ThinIdeaDto("A premise from this segment.") }))
+                .SetStructured(new ScoreIdeasResponse(new()
+                {
+                    new IdeaScoreDto(0, 0.9, 0.9, 0.9, 0.9),
+                    new IdeaScoreDto(1, 0.9, 0.9, 0.9, 0.9),
+                }));
+
+            using var db = _h.NewDb();
+            var queue = new VideoQueue(db, Options.Create(new WorkerOptions()), new WorkerControl(), NullLogger<VideoQueue>.Instance);
+            var videoId = await queue.EnqueueAsync("abc12345678");
+
+            var result = await BuildRunner(fake, db, apify).ProcessVideoJobAsync(videoId);
+
+            Assert.Equal(VideoJobStatus.Done, result.Status);
+            Assert.Equal(2, result.SurvivorIds.Count);
+            Assert.Equal(2, result.EnqueuedConceptJobIds.Count);
+
+            using var read = _h.NewDb();
+            var jobs = read.ConceptJobs.Where(j => result.EnqueuedConceptJobIds.Contains(j.Id)).ToList();
+            Assert.Equal(2, jobs.Count);
+            Assert.All(jobs, j => Assert.Equal(ConceptTrigger.Auto, j.Trigger));
+            Assert.All(jobs, j => Assert.Equal(ConceptJobStatus.Pending, j.Status));
+            Assert.Empty(read.Concepts); // builds nothing
+        }
+
+        [Fact]
+        public async Task ProcessVideoJobAsync_with_zero_survivors_is_ProcessedNoIdeas_and_enqueues_nothing()
+        {
+            const string transcriptText = "First we cover terraforming Mars over generations. " +
+                                          "Then we explore a rogue AI that runs a starship alone.";
+            var apify = FakeApifyIngestionService.WithTranscript("abc12345678", transcriptText, title: "Real Video");
+
+            // Both ideas culled by scoring ⇒ ProcessedNoIdeas, no ConceptJobs.
+            var fake = new FakeLlmClient()
+                .SetStructured(new SegmentationResponse(new()
+                {
+                    new SegmentBoundaryDto(0, "Terraforming", "First we cover terraforming Mars"),
+                    new SegmentBoundaryDto(1, "Rogue AI", "Then we explore a rogue AI"),
+                }))
+                .SetStructured(new ExtractIdeasResponse(new() { new ThinIdeaDto("A premise from this segment.") }))
+                .SetStructured(new ScoreIdeasResponse(new()
+                {
+                    new IdeaScoreDto(0, 0.1, 0.1, 0.1, 0.1),
+                    new IdeaScoreDto(1, 0.1, 0.1, 0.1, 0.1),
+                }));
+
+            using var db = _h.NewDb();
+            var queue = new VideoQueue(db, Options.Create(new WorkerOptions()), new WorkerControl(), NullLogger<VideoQueue>.Instance);
+            var videoId = await queue.EnqueueAsync("abc12345678");
+
+            var result = await BuildRunner(fake, db, apify).ProcessVideoJobAsync(videoId);
+
+            Assert.Equal(VideoJobStatus.ProcessedNoIdeas, result.Status);
+            Assert.Empty(result.SurvivorIds);
+            Assert.Empty(result.EnqueuedConceptJobIds);
+
+            using var read = _h.NewDb();
+            Assert.Empty(read.ConceptJobs);
             Assert.Empty(read.Concepts);
         }
 

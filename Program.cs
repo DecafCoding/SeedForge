@@ -9,6 +9,8 @@ using SeedForge.Features;
 using SeedForge.Features.Config;
 using SeedForge.Services.Ai;
 using SeedForge.Services.Apify;
+using SeedForge.Services.Queues;
+using SeedForge.Workers;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -51,6 +53,21 @@ builder.Services.AddApifyServices(builder.Configuration);
 
 // Pipeline slices, options, and the orchestrator.
 builder.Services.AddFeatures(builder.Configuration);
+
+// Durable, DB-backed queues over Video / ConceptJob rows.
+builder.Services.AddQueues();
+
+// Background workers: options + the shared pause/wake control.
+builder.Services.Configure<WorkerOptions>(builder.Configuration.GetSection("Workers"));
+builder.Services.AddSingleton<WorkerControl>();
+
+// Processing worker: drains the video queue (ingest → score → enqueue) one item per tick.
+builder.Services.AddScoped<ProcessingIteration>();
+builder.Services.AddHostedService<ProcessingWorker>();
+
+// Concept worker: drains the concept queue (build one concept per job) on its own cadence.
+builder.Services.AddScoped<ConceptIteration>();
+builder.Services.AddHostedService<ConceptWorker>();
 
 var app = builder.Build();
 

@@ -7,7 +7,8 @@ namespace SeedForge.Domain
         InProgress,
         Done,
         Failed,
-        NoTranscript
+        NoTranscript,
+        ProcessedNoIdeas
     }
 
     /// <summary>State of a concept-building <see cref="ConceptJob"/>.</summary>

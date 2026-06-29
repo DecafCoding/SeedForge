@@ -10,5 +10,13 @@ namespace SeedForge.Domain
         public ModelSlot? SlotOverride { get; set; }
         public string? ProfileOverride { get; set; }
         public DateTime CreatedAtUtc { get; set; }
+
+        // Queue mechanics (Phase 5): the ConceptJob row is the Concept-worker job.
+        /// <summary>Number of failed build attempts; drives backoff and the terminal-Failed cap.</summary>
+        public int AttemptCount { get; set; }
+        /// <summary>Earliest UTC the job may be claimed again after a backoff; null ⇒ immediately eligible.</summary>
+        public DateTime? NextAttemptUtc { get; set; }
+        /// <summary>Higher claims first; "process now" raises this so the job jumps the line.</summary>
+        public int Priority { get; set; }
     }
 }
