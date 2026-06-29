@@ -27,6 +27,11 @@ namespace SeedForge.Data
                 .HasIndex(v => v.YouTubeVideoId)
                 .IsUnique();
 
+            // Dedup key: at most one library row per followed YouTube channel.
+            builder.Entity<Channel>()
+                .HasIndex(c => c.YouTubeChannelId)
+                .IsUnique();
+
             // At most one active Concept per Idea (append-only with one active).
             builder.Entity<Concept>()
                 .HasIndex(c => c.IdeaId)

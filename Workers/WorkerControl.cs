@@ -2,11 +2,12 @@ using System.Collections.Concurrent;
 
 namespace SeedForge.Workers
 {
-    /// <summary>The two background workers, used to key pause flags and wake signals.</summary>
+    /// <summary>The background workers, used to key pause flags and wake signals.</summary>
     public enum Worker
     {
         Processing,
-        Concept
+        Concept,
+        Discovery
     }
 
     /// <summary>
@@ -22,13 +23,15 @@ namespace SeedForge.Workers
         {
             [Worker.Processing] = new SemaphoreSlim(0, 1),
             [Worker.Concept] = new SemaphoreSlim(0, 1),
+            [Worker.Discovery] = new SemaphoreSlim(0, 1),
         };
 
         public WorkerControl()
         {
-            // Paused by default until the operator resumes from /queues.
+            // Paused by default until the operator resumes from /queues or /channels.
             _paused[Worker.Processing] = true;
             _paused[Worker.Concept] = true;
+            _paused[Worker.Discovery] = true;
         }
 
         public bool IsPaused(Worker worker) => _paused.TryGetValue(worker, out var p) && p;

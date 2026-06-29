@@ -1,0 +1,152 @@
+@page "/channels"
+@rendermode InteractiveServer
+@using Microsoft.Extensions.Options
+@using SeedForge.Domain
+@using SeedForge.Features.Discovery
+@using SeedForge.Workers
+@inject ChannelLibrary Library
+@inject PollChannelsHandler PollChannels
+@inject WorkerControl Control
+
+<PageTitle>Channels</PageTitle>
+
+<h1>Channels</h1>
+<p>The discovery library: YouTube channels the Discovery worker polls for new uploads. New uploads are enqueued to the processing queue (drained by the Processing worker on <a href="queues">Queues</a>). The Discovery worker starts <strong>paused</strong> on boot — resume it here, or use <em>Poll now</em> for an on-demand poll.</p>
+
+@if (_error is not null)
+{
+    <div class="alert alert-danger">@_error</div>
+}
+@if (_message is not null)
+{
+    <div class="alert alert-success">@_message</div>
+}
+
+<div class="card mb-3">
+    <div class="card-body">
+        <h5 class="card-title">Discovery worker</h5>
+        <p class="card-text">Status: <strong>@(Control.IsPaused(Worker.Discovery) ? "Paused" : "Running")</strong></p>
+        <button class="btn btn-sm btn-primary me-2" disabled="@_busy" @onclick="ToggleWorker">
+            @(Control.IsPaused(Worker.Discovery) ? "Resume" : "Pause")
+        </button>
+        <button class="btn btn-sm btn-outline-secondary" disabled="@(_busy || _channels.Count == 0)" @onclick="() => PollNow(null)">
+            Poll all now
+        </button>
+    </div>
+</div>
+
+<h2>Add a channel</h2>
+<div class="input-group mb-3" style="max-width:40rem">
+    <input class="form-control" placeholder="UC… id, /channel/ URL, or @@handle" @bind="_input" disabled="@_busy" />
+    <button class="btn btn-primary" disabled="@(_busy || string.IsNullOrWhiteSpace(_input))" @onclick="AddChannel">
+        @(_busy ? "Working…" : "Add channel")
+    </button>
+</div>
+
+<h2>Followed channels (@_channels.Count)</h2>
+@if (_channels.Count == 0)
+{
+    <p class="text-muted">No channels yet. Add one above.</p>
+}
+else
+{
+    <table class="table">
+        <thead>
+            <tr><th>Title</th><th>Channel id</th><th>Last polled (UTC)</th><th></th></tr>
+        </thead>
+        <tbody>
+            @foreach (var channel in _channels)
+            {
+                <tr>
+                    <td>@channel.Title</td>
+                    <td><code>@channel.YouTubeChannelId</code></td>
+                    <td>@(channel.LastPolledUtc?.ToString("u") ?? "—")</td>
+                    <td class="text-end">
+                        <button class="btn btn-sm btn-outline-secondary me-2" disabled="@_busy" @onclick="() => PollNow(channel.Id)">Poll now</button>
+                        <button class="btn btn-sm btn-outline-danger" disabled="@_busy" @onclick="() => Remove(channel.Id)">Remove</button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+<button class="btn btn-link" disabled="@_busy" @onclick="RefreshAsync">Refresh</button>
+
+@code {
+    private List<Channel> _channels = new();
+    private string _input = string.Empty;
+    private bool _busy;
+    private string? _error;
+    private string? _message;
+
+    protected override async Task OnInitializedAsync() => await RefreshAsync();
+
+    private async Task RefreshAsync()
+    {
+        _error = null;
+        try
+        {
+            _channels = await Library.ListAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to load channels: {ex.Message}";
+        }
+    }
+
+    private void ToggleWorker()
+    {
+        if (Control.IsPaused(Worker.Discovery)) Control.Resume(Worker.Discovery);
+        else Control.Pause(Worker.Discovery);
+    }
+
+    private async Task AddChannel()
+    {
+        await RunAsync(async () =>
+        {
+            var channel = await Library.AddAsync(_input);
+            _message = $"Added \"{channel.Title}\".";
+            _input = string.Empty;
+        });
+    }
+
+    private async Task PollNow(int? channelId)
+    {
+        await RunAsync(async () =>
+        {
+            var result = await PollChannels.HandleAsync(new PollChannelsRequest(channelId), CancellationToken.None);
+            var newCount = result.Channels.Sum(c => c.NewVideoCount);
+            _message = $"Polled {result.Channels.Count} channel(s); enqueued {newCount} new upload(s).";
+        });
+    }
+
+    private async Task Remove(int channelId)
+    {
+        await RunAsync(async () =>
+        {
+            await Library.RemoveAsync(channelId);
+            _message = "Channel removed.";
+        });
+    }
+
+    private async Task RunAsync(Func<Task> action)
+    {
+        _busy = true;
+        _error = null;
+        _message = null;
+        try
+        {
+            await action();
+            await RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

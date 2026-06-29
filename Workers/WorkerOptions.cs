@@ -12,6 +12,9 @@ namespace SeedForge.Workers
         /// <summary>How often the Concept worker wakes to drain the concept queue (default 1 min).</summary>
         public int ConceptIntervalSeconds { get; set; } = 60;
 
+        /// <summary>How often the Discovery worker wakes to poll the channel library for new uploads (default 1 day).</summary>
+        public int DiscoveryIntervalSeconds { get; set; } = 86400;
+
         /// <summary>Failed attempts before a job becomes terminal <c>Failed</c>.</summary>
         public int MaxAttempts { get; set; } = 5;
 
