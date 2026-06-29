@@ -26,6 +26,8 @@ Phase 5 (Queues & Workers — Unattended Runs) is complete: SeedForge now runs w
 
 Phase 7 (Blazor UI & Operability) is complete — the final phase: the throwaway harness pages are consolidated into one coherent operational surface and the one genuinely new capability, the **cost & token dashboard**, is added. A read-only `CostDashboard` aggregation service (`Features/Observability/`) groups `AiCallLog` token usage + estimated cost **per stage** and **per provider** (local rig vs each hosted model), sums **Apify compute units** from transcripts, and applies a date filter — materializing then grouping in memory to sidestep SQLite `GroupBy` translation limits. A new **`/dashboard`** page surfaces those aggregates with a window selector; a consistent app shell + nav (Counter/Weather demo pages removed) reaches every route, and **`/`** is now a live overview (queue depths, active/stale concept counts, channels followed, recent concepts). The bare pages are polished into final form: **`/queues`** gains per-worker (Processing/Concept/Discovery) item-state tables (incl. `NoTranscript`, `Processed · 0 ideas`, `Failed` + attempts) over a pure, unit-tested `QueueEta` drain-time helper; **`/concepts`** adds full lineage (Concept → Idea → Segment → Transcript → Video) and side-by-side version compare; **`/config`** adds create/edit of a profile's five slots (keys never displayed/stored — blank ⇒ user-secrets); and a dedicated **`/replay`** page A/Bs a stored call against a chosen profile, original vs new, writing a new log and leaving the original untouched. No backend behavior changed — the phase is read-only queries + existing Phase 1–6 slice calls, validated by booting the app and asserting every route returns 200.
 
+Phase 8 (Video Metadata Capture) is complete: each `Video` now carries the per-video metadata the pipeline previously discarded — **duration, view / like / comment counts, publish date, description, thumbnail, and YouTube channel id**, plus a `MetadataSource` (None/Apify/YouTube/Merged) + `MetadataFetchedAtUtc` provenance pair (nullable columns; a `VideoMetadata` migration applied at startup). Two sources feed it, both behind a pure, defensive parser: the **Apify** dataset item already stored on each transcript is re-parsed at ingest at **zero extra API cost** (`ApifyMetadataParser`), and an optional, batched YouTube **`videos.list`** call (`YouTubeDataClient.GetVideoMetadataAsync`, ≤50 ids = 1 quota unit) enriches newly discovered videos with fresher stats. An explicit merge rule (`VideoMetadataMerge`) resolves the two — YouTube wins the volatile counts, Apify fills gaps — and a one-shot **backfill** (a button on **`/queues`**) re-parses stored raw items for pre-existing videos. Metadata is best-effort throughout: a parse/fetch miss logs and continues, never failing ingestion or discovery, and `null` means "unknown", never zero. Display of these fields lands in later phases.
+
 ## Tech Stack
 
 - **.NET 10** / ASP.NET Core Blazor Web App (Interactive Server)
@@ -179,6 +181,12 @@ dotnet user-secrets set "YouTube:ApiKey" "AIza..."
 ```
 
 The Discovery worker also **starts paused on boot** and runs on `Workers:DiscoveryIntervalSeconds` (default daily). Use the **`/channels`** page to add a channel (a `UC…` id, a `/channel/` URL, or an `@handle`), list / remove channels, resume the worker, or **poll now** for an on-demand poll. A poll lists each channel's recent uploads, enqueues only the ids with no existing `Video` row to the processing queue, and stamps `LastPolledUtc` — no transcript or AI work. Every automated test stubs the YouTube API; a real poll consumes YouTube quota.
+
+When `YouTube:FetchVideoMetadata` is `true` (the default), a poll also makes one batched `videos.list` call (≤50 ids = 1 quota unit) to stamp metadata onto the newly discovered videos. Set it `false` to spend zero extra quota — discovery then behaves exactly as before:
+
+```jsonc
+"YouTube": { "FetchVideoMetadata": true }   // appsettings.json; or YOUTUBE__FetchVideoMetadata=false as an env var
+```
 
 ### UI & Operability
 

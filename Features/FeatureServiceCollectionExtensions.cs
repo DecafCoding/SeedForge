@@ -3,6 +3,7 @@ using SeedForge.Features.Config;
 using SeedForge.Features.Discovery;
 using SeedForge.Features.Extraction;
 using SeedForge.Features.Ingestion;
+using SeedForge.Features.Maintenance;
 using SeedForge.Features.Observability;
 using SeedForge.Features.Scoring;
 using SeedForge.Features.Segmentation;
@@ -38,6 +39,9 @@ namespace SeedForge.Features
 
             // Cost & token dashboard (Phase 7): read-only aggregation over AiCallLog + Transcript.
             services.AddScoped<CostDashboard>();
+
+            // Maintenance (Phase 8): one-shot backfill of video metadata from stored raw Apify items.
+            services.AddScoped<BackfillVideoMetadataHandler>();
 
             // Driving-adapter orchestrator that composes the four slices.
             services.AddScoped<PipelineRunner>();

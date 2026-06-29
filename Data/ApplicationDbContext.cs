@@ -46,6 +46,7 @@ namespace SeedForge.Data
 
             // Enums stored as legible text rather than ints.
             builder.Entity<Video>().Property(v => v.Status).HasConversion<string>();
+            builder.Entity<Video>().Property(v => v.MetadataSource).HasConversion<string>();
             builder.Entity<ConceptJob>().Property(j => j.Status).HasConversion<string>();
             builder.Entity<ConceptJob>().Property(j => j.Trigger).HasConversion<string>();
             builder.Entity<ConceptJob>().Property(j => j.SlotOverride).HasConversion<string>();

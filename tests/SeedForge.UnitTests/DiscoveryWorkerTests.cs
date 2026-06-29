@@ -32,7 +32,9 @@ namespace SeedForge.UnitTests
         private DiscoveryIteration NewIteration(FakeYouTubeDataClient yt, SeedForge.Data.ApplicationDbContext db)
         {
             var queue = new VideoQueue(db, Options.Create(_opts), new WorkerControl(), NullLogger<VideoQueue>.Instance);
-            var poll = new PollChannelsHandler(db, yt, queue, NullLogger<PollChannelsHandler>.Instance);
+            var poll = new PollChannelsHandler(
+                db, yt, queue, Options.Create(new SeedForge.Services.YouTube.YouTubeOptions()),
+                NullLogger<PollChannelsHandler>.Instance);
             return new DiscoveryIteration(poll, NullLogger<DiscoveryIteration>.Instance);
         }
 

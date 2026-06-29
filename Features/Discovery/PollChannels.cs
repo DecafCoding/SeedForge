@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using SeedForge.Data;
+using SeedForge.Domain;
 using SeedForge.Services.Queues;
 using SeedForge.Services.YouTube;
 
@@ -25,8 +27,11 @@ namespace SeedForge.Features.Discovery
         ApplicationDbContext db,
         IYouTubeDataClient youtube,
         VideoQueue videoQueue,
+        IOptions<YouTubeOptions> youTubeOptions,
         ILogger<PollChannelsHandler> log)
     {
+        private readonly YouTubeOptions _ytOpts = youTubeOptions.Value;
+
         public async Task<PollChannelsResult> HandleAsync(PollChannelsRequest req, CancellationToken ct)
         {
             var channels = req.ChannelId is { } id
@@ -47,19 +52,25 @@ namespace SeedForge.Features.Discovery
                         .Select(v => v.YouTubeVideoId)
                         .ToHashSetAsync(ct);
 
-                    var newCount = 0;
+                    var newVideos = new List<(string YouTubeId, int VideoId)>();
                     foreach (var videoId in recent.Where(videoId => !known.Contains(videoId)))
                     {
-                        await videoQueue.EnqueueAsync(videoId, ct); // idempotent on YouTubeVideoId
-                        newCount++;
+                        var rowId = await videoQueue.EnqueueAsync(videoId, ct); // idempotent on YouTubeVideoId
+                        newVideos.Add((videoId, rowId));
                     }
 
                     channel.LastPolledUtc = DateTime.UtcNow;
                     await db.SaveChangesAsync(ct);
 
+                    // Optional, quota-gated enrichment: one batched videos.list call stamps metadata onto the new rows.
+                    if (_ytOpts.FetchVideoMetadata && newVideos.Count > 0)
+                    {
+                        await EnrichNewVideosAsync(newVideos, ct);
+                    }
+
                     log.LogInformation("Polled channel {ChannelId} ({Title}): {New} new of {Total} recent",
-                        channel.Id, channel.Title, newCount, recent.Count);
-                    summaries.Add(new ChannelPollSummary(channel.Id, channel.Title, newCount));
+                        channel.Id, channel.Title, newVideos.Count, recent.Count);
+                    summaries.Add(new ChannelPollSummary(channel.Id, channel.Title, newVideos.Count));
                 }
                 catch (Exception ex)
                 {
@@ -70,6 +81,35 @@ namespace SeedForge.Features.Discovery
             }
 
             return new PollChannelsResult(summaries);
+        }
+
+        /// <summary>
+        /// Best-effort metadata enrichment for freshly discovered videos: one batched <c>videos.list</c> call, then
+        /// stamps the returned metadata (YouTube-only at discovery — there is no transcript yet) onto the new rows. A
+        /// failure here never aborts the poll; the videos simply stay metadata-less until ingest backfills them.
+        /// </summary>
+        private async Task EnrichNewVideosAsync(IReadOnlyList<(string YouTubeId, int VideoId)> newVideos, CancellationToken ct)
+        {
+            try
+            {
+                var metadata = await youtube.GetVideoMetadataAsync(newVideos.Select(v => v.YouTubeId), ct);
+                if (metadata.Count == 0) return;
+
+                var idByYouTubeId = newVideos.ToDictionary(v => v.YouTubeId, v => v.VideoId, StringComparer.Ordinal);
+                var now = DateTime.UtcNow;
+                foreach (var (youTubeId, meta) in metadata)
+                {
+                    if (!idByYouTubeId.TryGetValue(youTubeId, out var rowId)) continue;
+                    var video = await db.Videos.FirstOrDefaultAsync(v => v.Id == rowId, ct);
+                    if (video is null) continue;
+                    meta.ApplyTo(video, now);
+                }
+                await db.SaveChangesAsync(ct);
+            }
+            catch (YouTubeException ex)
+            {
+                log.LogWarning(ex, "Video-metadata enrichment failed during poll; new videos left without metadata");
+            }
         }
     }
 }

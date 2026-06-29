@@ -36,4 +36,17 @@ namespace SeedForge.Domain
         Concept,
         Conversation
     }
+
+    /// <summary>Where a <see cref="Video"/>'s captured metadata came from (provenance for freshness/precedence).</summary>
+    public enum MetadataSource
+    {
+        /// <summary>No metadata captured yet.</summary>
+        None,
+        /// <summary>Parsed from the stored Apify dataset item (free; the default at ingest).</summary>
+        Apify,
+        /// <summary>Fetched from the YouTube Data API <c>videos.list</c> call (fresher; optional).</summary>
+        YouTube,
+        /// <summary>Both sources contributed values, resolved by the merge rule.</summary>
+        Merged
+    }
 }
