@@ -3,8 +3,10 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using SeedForge.Components;
 using SeedForge.Components.Account;
+using Microsoft.Extensions.Options;
 using SeedForge.Data;
 using SeedForge.Features;
+using SeedForge.Features.Config;
 using SeedForge.Services.Ai;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -53,6 +55,10 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<SeedForge.Data.ApplicationDbContext>();
     db.Database.Migrate();
+
+    // Seed the canonical config profiles on first run (idempotent) from the bound AI options.
+    var aiOptions = scope.ServiceProvider.GetRequiredService<IOptions<AiOptions>>().Value;
+    await ProfileSeeder.SeedAsync(db, aiOptions);
 }
 
 // Configure the HTTP request pipeline.

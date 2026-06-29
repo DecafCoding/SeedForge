@@ -99,6 +99,9 @@ namespace SeedForge.UnitTests
             var config = new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build();
             var services = new ServiceCollection();
             services.AddLogging();
+            // The scoped resolver reads IConfiguration + ApplicationDbContext; register both as the real app does.
+            services.AddSingleton<Microsoft.Extensions.Configuration.IConfiguration>(config);
+            services.AddDbContext<ApplicationDbContext>(o => o.UseSqlite("DataSource=:memory:"));
             services.AddAiServices(config);
 
             using var provider = services.BuildServiceProvider(new ServiceProviderOptions

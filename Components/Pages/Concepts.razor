@@ -1,0 +1,263 @@
+@page "/concepts"
+@rendermode InteractiveServer
+@using Microsoft.EntityFrameworkCore
+@using SeedForge.Data
+@using SeedForge.Domain
+@using SeedForge.Features.Concepts
+@using SeedForge.Features.Config
+@using SeedForge.Features.Observability
+@using SeedForge.Features.Scoring
+@inject ApplicationDbContext Db
+@inject ProfileService Profiles
+@inject RegenerateConceptHandler Regenerate
+@inject RescoreIdeaHandler Rescore
+@inject ReplayCallHandler Replay
+
+<PageTitle>Concept Browser</PageTitle>
+
+<h1>Concept Browser</h1>
+<p>Inspect an idea's version history, regenerate or re-score it, and replay a stored call to A/B configs.</p>
+
+@if (_error is not null)
+{
+    <div class="alert alert-danger">@_error</div>
+}
+
+<div class="row">
+    <div class="col-md-4">
+        <h2>Recent ideas</h2>
+        @if (_ideas.Count == 0)
+        {
+            <p><em>No ideas yet — run the pipeline first.</em></p>
+        }
+        <div class="list-group">
+            @foreach (var idea in _ideas)
+            {
+                <button class="list-group-item list-group-item-action @(idea.Id == _selectedIdeaId ? "active" : "")"
+                        disabled="@_busy" @onclick="() => SelectAsync(idea.Id)">
+                    #@idea.Id — @Truncate(idea.Premise, 80)
+                </button>
+            }
+        </div>
+    </div>
+
+    <div class="col-md-8">
+        @if (_selectedIdeaId is null)
+        {
+            <p><em>Select an idea to see its history.</em></p>
+        }
+        else
+        {
+            <div class="d-flex align-items-center gap-2 mb-3">
+                <label class="form-label mb-0">Profile override:</label>
+                <select class="form-select w-auto" @bind="_profileId" disabled="@_busy">
+                    <option value="">(active profile)</option>
+                    @foreach (var p in _profiles)
+                    {
+                        <option value="@p.Id">@p.Name @(p.IsActive ? "(active)" : "")</option>
+                    }
+                </select>
+                <button class="btn btn-primary btn-sm" disabled="@_busy" @onclick="RegenerateAsync">
+                    @(_busy && _action == "regen" ? "Regenerating…" : "Regenerate concept")
+                </button>
+                <button class="btn btn-secondary btn-sm" disabled="@_busy" @onclick="RescoreAsync">
+                    @(_busy && _action == "rescore" ? "Re-scoring…" : "Re-score idea")
+                </button>
+            </div>
+
+            <h3>Score history</h3>
+            <table class="table table-sm">
+                <thead>
+                    <tr><th>#</th><th>Novelty</th><th>Coherence</th><th>Sci-Fi</th><th>Formula</th><th>Passed</th><th>Model</th><th>When</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var s in _scores)
+                    {
+                        <tr>
+                            <td>@s.Id</td>
+                            <td>@s.Novelty.ToString("0.00")</td>
+                            <td>@s.Coherence.ToString("0.00")</td>
+                            <td>@s.SciFiPotential.ToString("0.00")</td>
+                            <td>@s.FormulaFit.ToString("0.00")</td>
+                            <td>@(s.PassedThreshold ? "✓" : "—")</td>
+                            <td>@s.Model</td>
+                            <td>@s.CreatedAtUtc.ToString("u")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+
+            <h3>Concept versions</h3>
+            @if (_concepts.Count == 0)
+            {
+                <p><em>No concepts built for this idea yet.</em></p>
+            }
+            @foreach (var c in _concepts)
+            {
+                <div class="card mb-2 @(c.IsStale ? "border-warning" : "")">
+                    <div class="card-body">
+                        <h5 class="card-title">
+                            @c.Title
+                            @if (c.IsActive)
+                            {
+                                <span class="badge bg-success">active</span>
+                            }
+                            @if (c.IsStale)
+                            {
+                                <span class="badge bg-warning text-dark">stale</span>
+                            }
+                        </h5>
+                        <p class="card-text">
+                            <strong>Genre:</strong> @c.Genre<br />
+                            <strong>Theme:</strong> @c.Theme<br />
+                            <strong>Hook:</strong> @c.Hook<br />
+                            <strong>Conflict:</strong> @c.Conflict<br />
+                            <strong>Central story question:</strong> @c.CentralStoryQuestion<br />
+                            <small class="text-muted">Model: @c.Model · @c.CreatedAtUtc.ToString("u")</small>
+                        </p>
+                    </div>
+                </div>
+            }
+
+            <h3>Stored calls (replay)</h3>
+            @if (_calls.Count == 0)
+            {
+                <p><em>No stored calls for this idea.</em></p>
+            }
+            <table class="table table-sm">
+                <thead>
+                    <tr><th>#</th><th>Stage</th><th>Slot</th><th>Model</th><th>Action</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var call in _calls)
+                    {
+                        <tr>
+                            <td>@call.Id</td>
+                            <td>@call.Stage</td>
+                            <td>@call.Slot</td>
+                            <td>@call.Model</td>
+                            <td>
+                                <button class="btn btn-outline-primary btn-sm" disabled="@_busy"
+                                        @onclick="() => ReplayAsync(call.Id, call.Slot)">
+                                    @(_busy && _action == "replay" && _replayingId == call.Id ? "Replaying…" : "Replay vs profile")
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+
+            @if (_replayResult is not null)
+            {
+                <h3>Replay A/B</h3>
+                <div class="row">
+                    <div class="col-md-6">
+                        <h5>Original (@_replayResult.OriginalModel)</h5>
+                        <pre class="border p-2">@_replayResult.OriginalResponse</pre>
+                    </div>
+                    <div class="col-md-6">
+                        <h5>Replay (@_replayResult.NewModel)</h5>
+                        <pre class="border p-2">@_replayResult.NewResponse</pre>
+                    </div>
+                </div>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    private List<Idea> _ideas = new();
+    private List<ConfigProfile> _profiles = new();
+    private int? _selectedIdeaId;
+    private string? _profileId; // bound as string from the <select>
+
+    private List<IdeaScore> _scores = new();
+    private List<Concept> _concepts = new();
+    private List<AiCallLog> _calls = new();
+    private ReplayResult? _replayResult;
+
+    private bool _busy;
+    private string? _action;
+    private int? _replayingId;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _profiles = await Profiles.ListAsync();
+        _ideas = await Db.Ideas.OrderByDescending(i => i.Id).Take(50).ToListAsync();
+    }
+
+    private int? ProfileIdValue =>
+        int.TryParse(_profileId, out var id) ? id : null;
+
+    private async Task SelectAsync(int ideaId)
+    {
+        _selectedIdeaId = ideaId;
+        _replayResult = null;
+        await LoadIdeaAsync(ideaId);
+    }
+
+    private async Task LoadIdeaAsync(int ideaId)
+    {
+        _scores = await Db.IdeaScores.Where(s => s.IdeaId == ideaId).OrderByDescending(s => s.Id).ToListAsync();
+        _concepts = await Db.Concepts.Where(c => c.IdeaId == ideaId).OrderByDescending(c => c.Id).ToListAsync();
+        _calls = await Db.AiCallLogs
+            .Where(l => l.RelatedEntityType == nameof(Idea) && l.RelatedEntityId == ideaId)
+            .OrderByDescending(l => l.Id).ToListAsync();
+    }
+
+    private async Task RegenerateAsync()
+    {
+        if (_selectedIdeaId is not int ideaId) return;
+        await RunAsync("regen", async () =>
+        {
+            await Regenerate.HandleAsync(new(ideaId, ProfileIdValue), default);
+            await LoadIdeaAsync(ideaId);
+        });
+    }
+
+    private async Task RescoreAsync()
+    {
+        if (_selectedIdeaId is not int ideaId) return;
+        await RunAsync("rescore", async () =>
+        {
+            await Rescore.HandleAsync(new(ideaId), default);
+            await LoadIdeaAsync(ideaId);
+        });
+    }
+
+    private async Task ReplayAsync(int callId, ModelSlot slot)
+    {
+        _replayingId = callId;
+        await RunAsync("replay", async () =>
+        {
+            _replayResult = await Replay.HandleAsync(new(callId, slot, ProfileIdValue), default);
+            if (_selectedIdeaId is int ideaId) await LoadIdeaAsync(ideaId);
+        });
+        _replayingId = null;
+    }
+
+    private async Task RunAsync(string action, Func<Task> work)
+    {
+        _busy = true;
+        _action = action;
+        _error = null;
+        try
+        {
+            await work();
+        }
+        catch (Exception ex)
+        {
+            // The failed stage is already captured in AiCallLog; surface a message rather than crash the circuit.
+            _error = $"{action} failed: {ex.Message}";
+        }
+        finally
+        {
+            _busy = false;
+            _action = null;
+        }
+    }
+
+    private static string Truncate(string text, int max) =>
+        text.Length <= max ? text : text[..max] + "…";
+}
