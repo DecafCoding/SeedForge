@@ -34,6 +34,7 @@ namespace SeedForge.Features
 
             // Versioning / compare-loop operations (Phase 3): each co-located with the slice it reuses.
             services.AddScoped<ProfileService>();
+            services.AddScoped<FailoverSettingsService>();
             services.AddScoped<RegenerateConceptHandler>();
             services.AddScoped<RescoreIdeaHandler>();
             services.AddScoped<ReplayCallHandler>();

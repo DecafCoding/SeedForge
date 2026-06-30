@@ -4,6 +4,7 @@
 @using SeedForge.Features.Config
 @using SeedForge.Services.Ai
 @inject ProfileService Profiles
+@inject FailoverSettingsService Failover
 @inject ConnectionTester ConnectionTester
 
 <PageTitle>Config Profiles</PageTitle>
@@ -22,6 +23,39 @@
 }
 else
 {
+    <div class="card mb-4">
+        <div class="card-body">
+            <h2 class="card-title fs-5">Failover</h2>
+            <p class="text-muted small mb-2">
+                When a model endpoint is unreachable — connection refused, timeout, or HTTP 5xx — retry that one call
+                once against another profile's matching slot. Off by default; e.g. fall back to <em>All OpenAI</em> when
+                the local rig is down.
+            </p>
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+                <div class="form-check mb-0">
+                    <input class="form-check-input" type="checkbox" id="failoverEnabled"
+                           @bind="_failoverEnabled" disabled="@_busy" />
+                    <label class="form-check-label" for="failoverEnabled">Enable failover</label>
+                </div>
+                <label class="form-label mb-0">Fallback profile:</label>
+                <select class="form-select w-auto" @bind="_fallbackProfileId" disabled="@(_busy || !_failoverEnabled)">
+                    <option value="">(choose…)</option>
+                    @foreach (var p in _profiles)
+                    {
+                        <option value="@p.Id">@p.Name @(p.IsActive ? "(active)" : "")</option>
+                    }
+                </select>
+                <button class="btn btn-primary btn-sm" disabled="@_busy" @onclick="SaveFailoverAsync">
+                    @(_busy && _action == "failover" ? "Saving…" : "Save")
+                </button>
+            </div>
+            @if (_failoverEnabled && string.IsNullOrEmpty(_fallbackProfileId))
+            {
+                <div class="text-warning small mt-1">Choose a fallback profile to enable failover.</div>
+            }
+        </div>
+    </div>
+
     <table class="table">
         <thead>
             <tr>
@@ -150,9 +184,45 @@ else
     private ConfigProfile? _editing;
     private Dictionary<string, LlmOptions> _editSlots = new();
 
+    // Failover: master on/off + the fallback profile (bound as string from the <select>).
+    private bool _failoverEnabled;
+    private string? _fallbackProfileId;
+
     protected override async Task OnInitializedAsync() => await LoadAsync();
 
-    private async Task LoadAsync() => _profiles = await Profiles.ListAsync();
+    private async Task LoadAsync()
+    {
+        _profiles = await Profiles.ListAsync();
+        var failover = await Failover.GetAsync();
+        _failoverEnabled = failover.Enabled;
+        _fallbackProfileId = failover.FallbackProfileId?.ToString();
+    }
+
+    private async Task SaveFailoverAsync()
+    {
+        _busy = true;
+        _action = "failover";
+        _error = null;
+        try
+        {
+            int? fallbackId = int.TryParse(_fallbackProfileId, out var id) ? id : null;
+            if (_failoverEnabled && fallbackId is null)
+            {
+                _error = "Choose a fallback profile to enable failover.";
+                return;
+            }
+            await Failover.UpdateAsync(_failoverEnabled, fallbackId);
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+            _action = null;
+        }
+    }
 
     private async Task SetActiveAsync(int id)
     {
