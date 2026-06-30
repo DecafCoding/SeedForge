@@ -18,7 +18,7 @@
     <input id="url" class="form-control" placeholder="https://www.youtube.com/watch?v=…" @bind="_urlInput" disabled="@_busy" />
 </div>
 <button class="btn btn-primary" disabled="@(_busy || string.IsNullOrWhiteSpace(_urlInput))" @onclick="RunFromUrlAsync">
-    @(_busy ? "Working…" : "Fetch & run")
+    @(_busy ? "Working…" : "Fetch & Run")
 </button>
 
 <hr />
@@ -33,7 +33,7 @@
     <textarea id="transcript" class="form-control" rows="10" @bind="_transcript" disabled="@_busy"></textarea>
 </div>
 <button class="btn btn-primary" disabled="@(_busy || string.IsNullOrWhiteSpace(_transcript))" @onclick="RunAsync">
-    @(_busy ? "Running…" : "Run pipeline")
+    @(_busy ? "Running…" : "Run Pipeline")
 </button>
 
 @if (_error is not null)

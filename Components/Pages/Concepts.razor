@@ -34,8 +34,8 @@
             @foreach (var idea in _ideas)
             {
                 <button class="list-group-item list-group-item-action @(idea.Id == _selectedIdeaId ? "active" : "")"
-                        disabled="@_busy" @onclick="() => SelectAsync(idea.Id)">
-                    #@idea.Id — @Truncate(idea.Premise, 80)
+                        title="@idea.Premise" disabled="@_busy" @onclick="() => SelectAsync(idea.Id)">
+                    #@idea.Id — @Truncate(idea.Premise, 160)
                 </button>
             }
         </div>
@@ -58,10 +58,10 @@
                     }
                 </select>
                 <button class="btn btn-primary btn-sm" disabled="@_busy" @onclick="RegenerateAsync">
-                    @(_busy && _action == "regen" ? "Regenerating…" : "Regenerate concept")
+                    @(_busy && _action == "regen" ? "Regenerating…" : "Regenerate Concept")
                 </button>
                 <button class="btn btn-secondary btn-sm" disabled="@_busy" @onclick="RescoreAsync">
-                    @(_busy && _action == "rescore" ? "Re-scoring…" : "Re-score idea")
+                    @(_busy && _action == "rescore" ? "Re-scoring…" : "Re-score Idea")
                 </button>
             </div>
 
@@ -96,13 +96,13 @@
                     {
                         <tr>
                             <td>@s.Id</td>
-                            <td>@s.Novelty.ToString("0.00")</td>
-                            <td>@s.Coherence.ToString("0.00")</td>
-                            <td>@s.SciFiPotential.ToString("0.00")</td>
-                            <td>@s.FormulaFit.ToString("0.00")</td>
+                            <td title="@Dec(s.Novelty)">@Whole(s.Novelty)</td>
+                            <td title="@Dec(s.Coherence)">@Whole(s.Coherence)</td>
+                            <td title="@Dec(s.SciFiPotential)">@Whole(s.SciFiPotential)</td>
+                            <td title="@Dec(s.FormulaFit)">@Whole(s.FormulaFit)</td>
                             <td>@(s.PassedThreshold ? "✓" : "—")</td>
                             <td>@s.Model</td>
-                            <td>@s.CreatedAtUtc.ToString("u")</td>
+                            <td>@s.CreatedAtUtc.ToString("MM/dd/yyyy h:mmtt").ToLowerInvariant()</td>
                         </tr>
                     }
                 </tbody>
@@ -188,7 +188,7 @@
                             <td>
                                 <button class="btn btn-outline-primary btn-sm me-1" disabled="@_busy"
                                         @onclick="() => ReplayAsync(call.Id, call.Slot)">
-                                    @(_busy && _action == "replay" && _replayingId == call.Id ? "Replaying…" : "Replay vs profile")
+                                    @(_busy && _action == "replay" && _replayingId == call.Id ? "Replaying…" : "Replay vs Profile")
                                 </button>
                                 <a class="btn btn-outline-secondary btn-sm" href="@($"replay?logId={call.Id}")">Open in Replay</a>
                             </td>
@@ -341,6 +341,11 @@
 
     private static string Truncate(string text, int max) =>
         text.Length <= max ? text : text[..max] + "…";
+
+    // Scores are stored 0–1; show a whole number on a 0–10 scale (truncated), with the 1-decimal value on hover.
+    // The +1e-9 nudge counters binary-float underestimation (e.g. 0.3 → 2.999… → 3, not 2).
+    private static string Whole(double value) => ((int)(value * 10 + 1e-9)).ToString();
+    private static string Dec(double value) => (value * 10).ToString("0.0");
 
     private RenderFragment RenderConceptDetail(Concept c) => __builder =>
     {

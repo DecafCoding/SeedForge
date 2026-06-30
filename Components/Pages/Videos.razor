@@ -7,7 +7,7 @@
 <PageTitle>Videos</PageTitle>
 
 <h1>Videos</h1>
-<p>Every discovered/ingested video and its pipeline yield: how many ideas it produced (split passed / failed / unscored by each idea's latest score) and how many concepts came out (active / total). Status makes legitimate non-yield outcomes — No transcript, Processed · 0 ideas — read clearly. Click a row to open the video's details.</p>
+<p>Every discovered/ingested video and its pipeline yield: how many ideas it produced (total / passed by each idea's latest score) and how many concepts came out (active / total). Status makes legitimate non-yield outcomes — No transcript, Processed · 0 ideas — read clearly. Click a row to open the video's details.</p>
 
 @if (_error is not null)
 {
@@ -30,7 +30,7 @@ else
             <tr>
                 <th>Video</th>
                 <th>Status</th>
-                <th class="text-end">Ideas</th>
+                <th class="text-end">Ideas (total/passed)</th>
                 <th class="text-end">Concepts</th>
                 <th>Created</th>
             </tr>
@@ -56,8 +56,7 @@ else
                         }
                         else
                         {
-                            <span>@r.IdeaCount</span>
-                            <small class="text-muted">(@r.Passed✓ / @r.Failed✗@(r.Unscored > 0 ? $" / {r.Unscored} unscored" : ""))</small>
+                            <span>@r.IdeaCount/@r.Passed</span>
                         }
                     </td>
                     <td class="text-end">
@@ -71,7 +70,7 @@ else
                             <small class="text-muted">/ @r.ConceptCount total</small>
                         }
                     </td>
-                    <td><small class="text-muted">@r.CreatedAtUtc.ToString("u")</small></td>
+                    <td><small class="text-muted">@r.CreatedAtUtc.ToString("MM/dd/yyyy")</small></td>
                 </tr>
             }
         </tbody>

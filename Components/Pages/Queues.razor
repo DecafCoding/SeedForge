@@ -4,7 +4,6 @@
 @using Microsoft.Extensions.Options
 @using SeedForge.Data
 @using SeedForge.Domain
-@using SeedForge.Features.Maintenance
 @using SeedForge.Services.Queues
 @using SeedForge.Workers
 @inject ApplicationDbContext Db
@@ -12,7 +11,6 @@
 @inject ConceptQueue ConceptQueue
 @inject WorkerControl Control
 @inject IOptions<WorkerOptions> WorkerOptions
-@inject BackfillVideoMetadataHandler BackfillMetadata
 
 <PageTitle>Queues</PageTitle>
 
@@ -32,6 +30,23 @@
     <div class="col-md-4">
         <div class="card mb-3">
             <div class="card-body">
+                <h5 class="card-title">Discovery (channels)</h5>
+                <p class="card-text">
+                    Channels followed: <strong>@_channels</strong><br />
+                    Poll interval: <strong>@FormatInterval(_opts.DiscoveryIntervalSeconds)</strong><br />
+                    Status: <strong class="@StatusClass(Worker.Discovery)">@StatusText(Worker.Discovery)</strong>
+                </p>
+                <button class="btn btn-sm btn-primary me-2" disabled="@_busy" @onclick="() => Toggle(Worker.Discovery)">
+                    @(Control.IsPaused(Worker.Discovery) ? "Resume" : "Pause")
+                </button>
+                <a class="btn btn-sm btn-outline-secondary" href="channels">Manage Channels</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card mb-3">
+            <div class="card-body">
                 <h5 class="card-title">Processing (videos)</h5>
                 <p class="card-text">
                     Pending: <strong>@_pendingVideos</strong><br />
@@ -44,7 +59,7 @@
                 </button>
                 <div class="input-group input-group-sm mt-2">
                     <input class="form-control" type="number" placeholder="video id" @bind="_processVideoId" disabled="@_busy" />
-                    <button class="btn btn-outline-secondary" disabled="@(_busy || _processVideoId is null)" @onclick="ProcessVideoNow">Process now</button>
+                    <button class="btn btn-outline-secondary" disabled="@(_busy || _processVideoId is null)" @onclick="ProcessVideoNow">Process Now</button>
                 </div>
             </div>
         </div>
@@ -65,25 +80,8 @@
                 </button>
                 <div class="input-group input-group-sm mt-2">
                     <input class="form-control" type="number" placeholder="job id" @bind="_processJobId" disabled="@_busy" />
-                    <button class="btn btn-outline-secondary" disabled="@(_busy || _processJobId is null)" @onclick="ProcessConceptNow">Process now</button>
+                    <button class="btn btn-outline-secondary" disabled="@(_busy || _processJobId is null)" @onclick="ProcessConceptNow">Process Now</button>
                 </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="col-md-4">
-        <div class="card mb-3">
-            <div class="card-body">
-                <h5 class="card-title">Discovery (channels)</h5>
-                <p class="card-text">
-                    Channels followed: <strong>@_channels</strong><br />
-                    Poll interval: <strong>@FormatInterval(_opts.DiscoveryIntervalSeconds)</strong><br />
-                    Status: <strong class="@StatusClass(Worker.Discovery)">@StatusText(Worker.Discovery)</strong>
-                </p>
-                <button class="btn btn-sm btn-primary me-2" disabled="@_busy" @onclick="() => Toggle(Worker.Discovery)">
-                    @(Control.IsPaused(Worker.Discovery) ? "Resume" : "Pause")
-                </button>
-                <a class="btn btn-sm btn-outline-secondary" href="channels">Manage channels</a>
             </div>
         </div>
     </div>
@@ -95,72 +93,13 @@
 <div class="input-group mb-3" style="max-width:40rem">
     <input class="form-control" placeholder="https://www.youtube.com/watch?v=…" @bind="_urlInput" disabled="@_busy" />
     <button class="btn btn-primary" disabled="@(_busy || string.IsNullOrWhiteSpace(_urlInput))" @onclick="EnqueueUrl">
-        @(_busy ? "Working…" : "Add to queue")
+        @(_busy ? "Working…" : "Add to Queue")
     </button>
 </div>
 
 <hr />
 
-<h2>Maintenance</h2>
-<p>Backfill video metadata (duration, views, likes, publish date, …) for videos ingested before metadata capture, by re-parsing the Apify item already stored with each transcript. <strong>Free</strong> — no Apify re-fetch. Idempotent: safe to run repeatedly.</p>
-<button class="btn btn-outline-secondary mb-3" disabled="@_busy" @onclick="BackfillMetadataAsync">
-    @(_busy ? "Working…" : "Backfill video metadata")
-</button>
-
-<hr />
-
 <button class="btn btn-link" disabled="@_busy" @onclick="RefreshAsync">Refresh</button>
-
-<div class="row mt-3">
-    <div class="col-md-6">
-        <h2>Recent videos</h2>
-        @if (_recentVideos.Count == 0)
-        {
-            <p><em>No videos enqueued yet.</em></p>
-        }
-        else
-        {
-            <table class="table table-sm">
-                <thead><tr><th>#</th><th>Title / id</th><th>State</th><th>Attempts</th></tr></thead>
-                <tbody>
-                    @foreach (var v in _recentVideos)
-                    {
-                        <tr>
-                            <td>@v.Id</td>
-                            <td>@(string.IsNullOrWhiteSpace(v.Title) ? v.YouTubeVideoId : v.Title)</td>
-                            <td>@VideoStateLabel(v.Status)</td>
-                            <td>@v.AttemptCount</td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
-        }
-    </div>
-    <div class="col-md-6">
-        <h2>Recent concept jobs</h2>
-        @if (_recentJobs.Count == 0)
-        {
-            <p><em>No concept jobs yet.</em></p>
-        }
-        else
-        {
-            <table class="table table-sm">
-                <thead><tr><th>#</th><th>Idea</th><th>State</th><th>Attempts</th></tr></thead>
-                <tbody>
-                    @foreach (var j in _recentJobs)
-                    {
-                        <tr>
-                            <td>@j.Id</td>
-                            <td>#@j.IdeaId</td>
-                            <td>@ConceptStateLabel(j.Status)</td>
-                            <td>@j.AttemptCount</td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
-        }
-    </div>
-</div>
 
 @code {
     private WorkerOptions _opts = new();
@@ -170,8 +109,6 @@
     private string _urlInput = string.Empty;
     private int? _processVideoId;
     private int? _processJobId;
-    private List<Video> _recentVideos = new();
-    private List<ConceptJob> _recentJobs = new();
     private bool _busy;
     private string? _error;
     private string? _message;
@@ -190,8 +127,6 @@
             _pendingVideos = await VideoQueue.CountPendingAsync();
             _pendingConcepts = await ConceptQueue.CountPendingAsync();
             _channels = await Db.Channels.CountAsync();
-            _recentVideos = await Db.Videos.OrderByDescending(v => v.Id).Take(15).ToListAsync();
-            _recentJobs = await Db.ConceptJobs.OrderByDescending(j => j.Id).Take(15).ToListAsync();
         }
         catch (Exception ex)
         {
@@ -233,15 +168,6 @@
         });
     }
 
-    private async Task BackfillMetadataAsync()
-    {
-        await RunAsync(async () =>
-        {
-            var result = await BackfillMetadata.HandleAsync();
-            _message = $"Backfill complete: {result.Updated} of {result.Scanned} candidate video(s) updated.";
-        });
-    }
-
     private async Task RunAsync(Func<Task> action)
     {
         _busy = true;
@@ -272,25 +198,4 @@
         if (ts.TotalHours >= 1) return $"{ts.TotalHours:0.#}h";
         return $"{ts.TotalMinutes:0.#}m";
     }
-
-    // Distinct states must read clearly — a legitimate "Processed · 0 ideas" is NOT a failure.
-    private static string VideoStateLabel(VideoJobStatus status) => status switch
-    {
-        VideoJobStatus.Pending => "Pending",
-        VideoJobStatus.InProgress => "In progress",
-        VideoJobStatus.Done => "Done",
-        VideoJobStatus.Failed => "Failed",
-        VideoJobStatus.NoTranscript => "No transcript",
-        VideoJobStatus.ProcessedNoIdeas => "Processed · 0 ideas",
-        _ => status.ToString(),
-    };
-
-    private static string ConceptStateLabel(ConceptJobStatus status) => status switch
-    {
-        ConceptJobStatus.Pending => "Pending",
-        ConceptJobStatus.InProgress => "In progress",
-        ConceptJobStatus.Done => "Done",
-        ConceptJobStatus.Failed => "Failed",
-        _ => status.ToString(),
-    };
 }

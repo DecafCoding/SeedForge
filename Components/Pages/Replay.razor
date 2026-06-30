@@ -46,7 +46,7 @@
                         <span>#@log.Id · @log.Stage</span>
                         <small>@(log.Success ? "" : "⚠ ")@log.Model</small>
                     </div>
-                    <small class="@(log.Id == _selected?.Id ? "" : "text-muted")">@log.Slot · @log.CreatedAtUtc.ToString("u")</small>
+                    <small class="@(log.Id == _selected?.Id ? "" : "text-muted")">@log.Slot · @log.CreatedAtUtc.ToString("MM/dd/yyyy h:mmtt").ToLowerInvariant()</small>
                 </button>
             }
         </div>

@@ -2,7 +2,9 @@
 @rendermode InteractiveServer
 @using SeedForge.Domain
 @using SeedForge.Features.Browse
+@using SeedForge.Features.Maintenance
 @inject BrowseQueries Browse
+@inject BackfillVideoMetadataHandler Backfill
 
 <PageTitle>@(_v?.Title ?? "Video") — Details</PageTitle>
 
@@ -100,13 +102,7 @@ else
                 <dd class="col-sm-6">@_v.SegmentCount</dd>
 
                 <dt class="col-sm-6">Ideas</dt>
-                <dd class="col-sm-6">
-                    @_v.IdeaCount
-                    @if (_v.IdeaCount > 0)
-                    {
-                        <small class="text-muted">(@_v.Passed✓ / @_v.Failed✗@(_v.Unscored > 0 ? $" / {_v.Unscored} unscored" : ""))</small>
-                    }
-                </dd>
+                <dd class="col-sm-6">@_v.IdeaCount/@_v.Passed <small class="text-muted">(total / passed)</small></dd>
 
                 <dt class="col-sm-6">Concepts</dt>
                 <dd class="col-sm-6">@_v.Concepts.Count</dd>
@@ -192,6 +188,15 @@ else
             </tfoot>
         </table>
     }
+
+    <hr />
+    <button class="btn btn-outline-secondary" disabled="@_working" @onclick="BackfillMetadataAsync">
+        @(_working ? "Working…" : "Backfill Video Metadata")
+    </button>
+    @if (_message is not null)
+    {
+        <div class="alert alert-success mt-2">@_message</div>
+    }
 }
 
 @code {
@@ -199,7 +204,30 @@ else
 
     private VideoDetail? _v;
     private bool _busy = true;
+    private bool _working;
+    private string? _message;
     private string? _error;
+
+    private async Task BackfillMetadataAsync()
+    {
+        _working = true;
+        _message = null;
+        _error = null;
+        try
+        {
+            var result = await Backfill.HandleAsync();
+            _message = $"Backfill complete: {result.Updated} of {result.Scanned} candidate video(s) updated.";
+            _v = await Browse.VideoDetailAsync(Id, default); // refresh this video's metadata view
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _working = false;
+        }
+    }
 
     protected override async Task OnParametersSetAsync()
     {
