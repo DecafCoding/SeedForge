@@ -201,7 +201,7 @@ When `YouTube:FetchVideoMetadata` is `true` (the default), a poll also makes one
 The consolidated operational surface lets you run, monitor, and re-tune the whole engine without touching code. The app shell's navigation reaches every surface:
 
 - **`/`** — home overview: video/concept queue depths, active & stale concept counts, channels followed, and recent concepts.
-- **`/dashboard`** — **cost & token dashboard**: tokens + estimated cost aggregated **per stage** and **per provider** (local runs report tokens at cost 0; each hosted model separates out), grand totals, and **Apify compute units**, over a selectable window (default 30 days). Empty data renders zeros, not an error.
+- **`/tokencost`** — **Tokens & Cost**: tokens + estimated cost aggregated **per stage** and **per provider** (local runs report tokens at cost 0; each hosted model separates out), grand totals, and **Apify compute units**, over a selectable window (default 30 days). Empty data renders zeros, not an error.
 - **`/queues`** — per-worker (Processing / Concept / Discovery) pending counts, drain-time ETA, pause/resume, process-now, and recent-item state tables.
 - **`/concepts`** — version history, active/stale flags, full lineage, side-by-side version compare, and the regenerate / rescore / replay actions.
 - **`/ideas`** — read-only table of every extracted idea with its source video, latest axis scores, pass/fail, and creation date; rows drill into the Concept Browser.
@@ -210,4 +210,4 @@ The consolidated operational surface lets you run, monitor, and re-tune the whol
 - **`/config`** — manage profiles (create/edit the five slots, set active) and per-slot test-connection.
 - **`/replay`** — A/B a stored call against a chosen profile, original vs new side by side.
 
-The dashboard aggregation is read-only and groups in memory (small single-user data volumes), so it never fights EF/SQLite `GroupBy` translation.
+The Tokens & Cost aggregation is read-only and groups in memory (small single-user data volumes), so it never fights EF/SQLite `GroupBy` translation.
