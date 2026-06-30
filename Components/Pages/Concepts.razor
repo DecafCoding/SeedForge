@@ -89,7 +89,7 @@
             <h3>Score history</h3>
             <table class="table table-sm">
                 <thead>
-                    <tr><th>#</th><th>Novelty</th><th>Coherence</th><th>Sci-Fi</th><th>Formula</th><th>Passed</th><th>Model</th><th>When</th></tr>
+                    <tr><th>#</th><th>Novelty</th><th>Coherence</th><th>Potential</th><th>Suitability</th><th>Passed</th><th>Model</th><th>When</th></tr>
                 </thead>
                 <tbody>
                     @foreach (var s in _scores)
@@ -98,8 +98,8 @@
                             <td>@s.Id</td>
                             <td title="@Dec(s.Novelty)">@Whole(s.Novelty)</td>
                             <td title="@Dec(s.Coherence)">@Whole(s.Coherence)</td>
-                            <td title="@Dec(s.SciFiPotential)">@Whole(s.SciFiPotential)</td>
-                            <td title="@Dec(s.FormulaFit)">@Whole(s.FormulaFit)</td>
+                            <td title="@Dec(s.Potential)">@Whole(s.Potential)</td>
+                            <td title="@Dec(s.Suitability)">@Whole(s.Suitability)</td>
                             <td>@(s.PassedThreshold ? "✓" : "—")</td>
                             <td>@s.Model</td>
                             <td>@s.CreatedAtUtc.ToString("MM/dd/yyyy h:mmtt").ToLowerInvariant()</td>

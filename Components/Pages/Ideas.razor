@@ -6,7 +6,7 @@
 <PageTitle>Ideas</PageTitle>
 
 <h1>Ideas</h1>
-<p>Every extracted idea, with its source video, latest score, pass/fail, and creation date. Click a row to open its full version history in the Concept Browser.</p>
+<p>Every extracted idea, with its source video, latest score, pass/fail, and creation date. Click a row to open its full version history in the Concept Browser. Score columns are abbreviated: N = Novelty (freshness of the idea), C = Coherence (internal logical consistency), P = Potential (richness as science fiction), S = Suitability (suitability for a developed story), and M = Mean (the average of the four, shown green when the idea passes and red when it doesn't).</p>
 
 @if (_error is not null)
 {
@@ -29,12 +29,11 @@ else
             <tr>
                 <th>Idea</th>
                 <th>Parent Video</th>
-                <th class="text-end">Novelty</th>
-                <th class="text-end">Coherence</th>
-                <th class="text-end">Sci-Fi</th>
-                <th class="text-end">Formula</th>
-                <th class="text-end">Mean</th>
-                <th>Passed</th>
+                <th class="text-end">N</th>
+                <th class="text-end">C</th>
+                <th class="text-end">P</th>
+                <th class="text-end">S</th>
+                <th class="text-end">M</th>
                 <th>Created</th>
             </tr>
         </thead>
@@ -42,7 +41,7 @@ else
             @foreach (var r in _rows)
             {
                 <tr style="cursor:pointer" @onclick="() => OpenConcepts(r.Id)">
-                    <td title="@r.Premise">#@r.Id — @Truncate(r.Premise, 160)</td>
+                    <td title="@r.Premise">@Truncate(r.Premise, 160)</td>
                     <td @onclick:stopPropagation="true">
                         @if (r.VideoId is int videoId)
                         {
@@ -55,22 +54,10 @@ else
                     </td>
                     <td class="text-end" title="@Dec(r.Novelty)">@Whole(r.Novelty)</td>
                     <td class="text-end" title="@Dec(r.Coherence)">@Whole(r.Coherence)</td>
-                    <td class="text-end" title="@Dec(r.SciFiPotential)">@Whole(r.SciFiPotential)</td>
-                    <td class="text-end" title="@Dec(r.FormulaFit)">@Whole(r.FormulaFit)</td>
-                    <td class="text-end" title="@Dec(r.Mean)">@Whole(r.Mean)</td>
-                    <td>
-                        @if (r.Passed is null)
-                        {
-                            <span class="badge bg-secondary">unscored</span>
-                        }
-                        else if (r.Passed.Value)
-                        {
-                            <span class="badge bg-success">✓</span>
-                        }
-                        else
-                        {
-                            <span class="badge bg-light text-dark">—</span>
-                        }
+                    <td class="text-end" title="@Dec(r.Potential)">@Whole(r.Potential)</td>
+                    <td class="text-end" title="@Dec(r.Suitability)">@Whole(r.Suitability)</td>
+                    <td class="text-end" title="@Dec(r.Mean)">
+                        <span class="badge @MeanBadgeClass(r.Passed)">@Whole(r.Mean)</span>
                     </td>
                     <td><small class="text-muted">@r.CreatedAtUtc.ToString("MM/dd/yyyy")</small></td>
                 </tr>
@@ -108,6 +95,14 @@ else
     // The +1e-9 nudge counters binary-float underestimation (e.g. 0.3 → 2.999… → 3, not 2).
     private static string Whole(double? value) => value is null ? "—" : ((int)(value.Value * 10 + 1e-9)).ToString();
     private static string? Dec(double? value) => value is null ? null : (value.Value * 10).ToString("0.0");
+
+    // Square badge colored by pass/fail: green for pass, red for fail, grey while unscored.
+    private static string MeanBadgeClass(bool? passed) => passed switch
+    {
+        true => "bg-success",
+        false => "bg-danger",
+        null => "bg-secondary",
+    };
 
     private static string Truncate(string text, int max) =>
         text.Length <= max ? text : text[..max] + "…";

@@ -10,7 +10,7 @@ namespace SeedForge.Features.Scoring
     public sealed record ScoreIdeasRequest(IReadOnlyList<int> IdeaIds, string CorrelationId);
 
     /// <summary>One idea's four-axis score, keyed back to the request by its 0-based list index.</summary>
-    public sealed record IdeaScoreDto(int Index, double Novelty, double Coherence, double SciFiPotential, double FormulaFit);
+    public sealed record IdeaScoreDto(int Index, double Novelty, double Coherence, double Potential, double Suitability);
 
     /// <summary>The structured scoring result: one entry per scored idea.</summary>
     public sealed record ScoreIdeasResponse(List<IdeaScoreDto> Scores);
@@ -28,7 +28,7 @@ namespace SeedForge.Features.Scoring
         private const string System =
             "You score science-fiction story premises on four axes, each from 0.0 to 1.0: " +
             "Novelty (freshness of the idea), Coherence (internal logical consistency), " +
-            "SciFiPotential (richness as science fiction), and FormulaFit (suitability for a developed story). " +
+            "Potential (richness as science fiction), and Suitability (suitability for a developed story). " +
             "You are given a numbered list of premises. Return one score object per premise, echoing its Index. " +
             "Score every premise you are given.";
 
@@ -75,14 +75,14 @@ namespace SeedForge.Features.Scoring
                 if (dto.Index < 0 || dto.Index >= ideas.Count) continue;
                 var idea = ideas[dto.Index];
 
-                var passed = ((dto.Novelty + dto.Coherence + dto.SciFiPotential + dto.FormulaFit) / 4.0) >= threshold;
+                var passed = ((dto.Novelty + dto.Coherence + dto.Potential + dto.Suitability) / 4.0) >= threshold;
                 scoresToAdd.Add(new IdeaScore
                 {
                     IdeaId = idea.Id,
                     Novelty = dto.Novelty,
                     Coherence = dto.Coherence,
-                    SciFiPotential = dto.SciFiPotential,
-                    FormulaFit = dto.FormulaFit,
+                    Potential = dto.Potential,
+                    Suitability = dto.Suitability,
                     PassedThreshold = passed,
                     Slot = ModelSlot.Scoring,
                     Model = resolved.Model,
