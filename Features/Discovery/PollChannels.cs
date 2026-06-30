@@ -44,19 +44,20 @@ namespace SeedForge.Features.Discovery
             {
                 try
                 {
-                    var recent = await youtube.ListRecentVideoIdsAsync(channel.UploadsPlaylistId, ct); // newest first
+                    var recent = await youtube.ListRecentUploadsAsync(channel.UploadsPlaylistId, ct); // newest first
+                    var recentIds = recent.Select(u => u.VideoId).ToList();
 
                     // Dedupe against known videos: only ids with no existing Video row are genuinely new.
                     var known = await db.Videos
-                        .Where(v => recent.Contains(v.YouTubeVideoId))
+                        .Where(v => recentIds.Contains(v.YouTubeVideoId))
                         .Select(v => v.YouTubeVideoId)
                         .ToHashSetAsync(ct);
 
                     var newVideos = new List<(string YouTubeId, int VideoId)>();
-                    foreach (var videoId in recent.Where(videoId => !known.Contains(videoId)))
+                    foreach (var upload in recent.Where(u => !known.Contains(u.VideoId)))
                     {
-                        var rowId = await videoQueue.EnqueueAsync(videoId, ct); // idempotent on YouTubeVideoId
-                        newVideos.Add((videoId, rowId));
+                        var rowId = await videoQueue.EnqueueAsync(upload.VideoId, upload.Title, ct); // idempotent on YouTubeVideoId
+                        newVideos.Add((upload.VideoId, rowId));
                     }
 
                     channel.LastPolledUtc = DateTime.UtcNow;

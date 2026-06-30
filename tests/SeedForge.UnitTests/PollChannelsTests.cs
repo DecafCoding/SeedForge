@@ -82,6 +82,20 @@ namespace SeedForge.UnitTests
         }
 
         [Fact]
+        public async Task Poll_persists_the_upload_title_on_the_new_video()
+        {
+            var channelId = SeedChannel();
+            var yt = new FakeYouTubeDataClient()
+                .HasRecentUploads(UploadsId, new RecentUpload("new00000001", "How to Terraform Mars"));
+
+            using var db = _h.NewDb();
+            await NewHandler(yt, db).HandleAsync(new PollChannelsRequest(channelId), CancellationToken.None);
+
+            using var read = _h.NewDb();
+            Assert.Equal("How to Terraform Mars", read.Videos.Single(v => v.YouTubeVideoId == "new00000001").Title);
+        }
+
+        [Fact]
         public async Task Poll_with_no_new_uploads_enqueues_nothing_but_still_stamps()
         {
             var channelId = SeedChannel();

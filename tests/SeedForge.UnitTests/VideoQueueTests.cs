@@ -85,6 +85,32 @@ namespace SeedForge.UnitTests
             Assert.Equal(second, claimed!.Id);
         }
 
+        [Fact]
+        public async Task Enqueue_persists_a_supplied_title_on_a_new_row()
+        {
+            var id = await NewQueue().EnqueueAsync("abc12345678", "Terraforming Mars");
+
+            using var read = _h.NewDb();
+            Assert.Equal("Terraforming Mars", read.Videos.Single(v => v.Id == id).Title);
+        }
+
+        [Fact]
+        public async Task Enqueue_backfills_a_missing_title_but_never_clobbers_an_existing_one()
+        {
+            // First discovery had no title; a later re-arm supplies one ⇒ backfilled.
+            var id = await NewQueue().EnqueueAsync("abc12345678");
+            await NewQueue().EnqueueAsync("abc12345678", "Real Title");
+            using (var read = _h.NewDb())
+            {
+                Assert.Equal("Real Title", read.Videos.Single(v => v.Id == id).Title);
+            }
+
+            // A subsequent re-arm with a different title must NOT overwrite the captured one.
+            await NewQueue().EnqueueAsync("abc12345678", "Different Title");
+            using var read2 = _h.NewDb();
+            Assert.Equal("Real Title", read2.Videos.Single(v => v.Id == id).Title);
+        }
+
         [Theory]
         [InlineData(VideoJobStatus.Done)]
         [InlineData(VideoJobStatus.ProcessedNoIdeas)]

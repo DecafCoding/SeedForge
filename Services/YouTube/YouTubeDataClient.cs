@@ -51,12 +51,13 @@ namespace SeedForge.Services.YouTube
             return new ResolvedChannel(channelId, title, uploads);
         }
 
-        public async Task<IReadOnlyList<string>> ListRecentVideoIdsAsync(string uploadsPlaylistId, CancellationToken ct = default)
+        public async Task<IReadOnlyList<RecentUpload>> ListRecentUploadsAsync(string uploadsPlaylistId, CancellationToken ct = default)
         {
-            var query = $"playlistItems?part=contentDetails&playlistId={Uri.EscapeDataString(uploadsPlaylistId)}&maxResults={_opts.MaxResults}";
+            // snippet carries the title; contentDetails carries the video id. Both parts cost the same single quota unit.
+            var query = $"playlistItems?part=snippet,contentDetails&playlistId={Uri.EscapeDataString(uploadsPlaylistId)}&maxResults={_opts.MaxResults}";
             using var doc = await GetAsync(query, ct);
 
-            var ids = new List<string>();
+            var uploads = new List<RecentUpload>();
             if (doc.RootElement.TryGetProperty("items", out var items) && items.ValueKind == JsonValueKind.Array)
             {
                 foreach (var item in items.EnumerateArray())
@@ -65,13 +66,14 @@ namespace SeedForge.Services.YouTube
                         && cd.TryGetProperty("videoId", out var vid)
                         && vid.GetString() is { Length: > 0 } id)
                     {
-                        ids.Add(id);
+                        var title = item.TryGetProperty("snippet", out var snippet) ? ReadString(snippet, "title") : null;
+                        uploads.Add(new RecentUpload(id, title));
                     }
                 }
             }
 
-            log.LogInformation("Listed {Count} recent video id(s) for uploads playlist {Uploads}", ids.Count, uploadsPlaylistId);
-            return ids;
+            log.LogInformation("Listed {Count} recent upload(s) for uploads playlist {Uploads}", uploads.Count, uploadsPlaylistId);
+            return uploads;
         }
 
         private const int MaxIdsPerCall = 50; // videos.list accepts up to 50 ids in one (1-unit) call.

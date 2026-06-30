@@ -11,7 +11,7 @@ namespace SeedForge.UnitTests.Fakes
     public sealed class FakeYouTubeDataClient : IYouTubeDataClient
     {
         private readonly Dictionary<string, ResolvedChannel> _resolutions = new();
-        private readonly Dictionary<string, IReadOnlyList<string>> _recent = new();
+        private readonly Dictionary<string, IReadOnlyList<RecentUpload>> _recent = new();
         private readonly HashSet<string> _throwOnPlaylist = new();
         private readonly Dictionary<string, VideoMetadata> _metadata = new(StringComparer.Ordinal);
 
@@ -27,7 +27,13 @@ namespace SeedForge.UnitTests.Fakes
 
         public FakeYouTubeDataClient HasRecent(string uploadsPlaylistId, params string[] videoIds)
         {
-            _recent[uploadsPlaylistId] = videoIds;
+            _recent[uploadsPlaylistId] = videoIds.Select(id => new RecentUpload(id, null)).ToList();
+            return this;
+        }
+
+        public FakeYouTubeDataClient HasRecentUploads(string uploadsPlaylistId, params RecentUpload[] uploads)
+        {
+            _recent[uploadsPlaylistId] = uploads;
             return this;
         }
 
@@ -50,12 +56,12 @@ namespace SeedForge.UnitTests.Fakes
             throw new YouTubeException($"FakeYouTubeDataClient: no resolution registered for '{input}'.");
         }
 
-        public Task<IReadOnlyList<string>> ListRecentVideoIdsAsync(string uploadsPlaylistId, CancellationToken ct = default)
+        public Task<IReadOnlyList<RecentUpload>> ListRecentUploadsAsync(string uploadsPlaylistId, CancellationToken ct = default)
         {
             ListCalls++;
             if (_throwOnPlaylist.Contains(uploadsPlaylistId))
                 throw new YouTubeException($"FakeYouTubeDataClient: forced failure for '{uploadsPlaylistId}'.");
-            return Task.FromResult(_recent.TryGetValue(uploadsPlaylistId, out var ids) ? ids : Array.Empty<string>());
+            return Task.FromResult(_recent.TryGetValue(uploadsPlaylistId, out var uploads) ? uploads : Array.Empty<RecentUpload>());
         }
 
         public Task<IReadOnlyDictionary<string, VideoMetadata>> GetVideoMetadataAsync(

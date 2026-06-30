@@ -27,8 +27,8 @@ namespace SeedForge.UnitTests
         private static string PlaylistItemsJson() => """
         {
           "items": [
-            { "contentDetails": { "videoId": "aaaaaaaaaaa", "videoPublishedAt": "2026-06-28T10:00:00Z" } },
-            { "contentDetails": { "videoId": "bbbbbbbbbbb", "videoPublishedAt": "2026-06-27T10:00:00Z" } },
+            { "snippet": { "title": "First Video" },  "contentDetails": { "videoId": "aaaaaaaaaaa", "videoPublishedAt": "2026-06-28T10:00:00Z" } },
+            { "snippet": { "title": "Second Video" }, "contentDetails": { "videoId": "bbbbbbbbbbb", "videoPublishedAt": "2026-06-27T10:00:00Z" } },
             { "contentDetails": { "videoId": "ccccccccccc", "videoPublishedAt": "2026-06-26T10:00:00Z" } }
           ]
         }
@@ -70,14 +70,16 @@ namespace SeedForge.UnitTests
         }
 
         [Fact]
-        public async Task ListRecentVideoIds_returns_ids_in_order()
+        public async Task ListRecentUploads_returns_ids_in_order_with_titles()
         {
             var handler = new RoutingHttpMessageHandler().When("playlistItems?", PlaylistItemsJson());
             var client = Build(handler);
 
-            var ids = await client.ListRecentVideoIdsAsync(UploadsId);
+            var uploads = await client.ListRecentUploadsAsync(UploadsId);
 
-            Assert.Equal(new[] { "aaaaaaaaaaa", "bbbbbbbbbbb", "ccccccccccc" }, ids);
+            Assert.Equal(new[] { "aaaaaaaaaaa", "bbbbbbbbbbb", "ccccccccccc" }, uploads.Select(u => u.VideoId));
+            Assert.Equal(new[] { "First Video", "Second Video", null }, uploads.Select(u => u.Title));
+            Assert.Contains("part=snippet", handler.LastRequestUri!.ToString()); // title fetched in the same call
         }
 
         [Fact]
