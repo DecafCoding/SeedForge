@@ -24,8 +24,10 @@ namespace SeedForge.Services.Queues
         /// <summary>
         /// Enqueues a YouTube URL/id as a Pending <see cref="Video"/>. Idempotent on <see cref="Video.YouTubeVideoId"/>:
         /// an already-known video is re-armed (Pending, attempts reset) rather than duplicated. Returns the video id.
+        /// An optional <paramref name="title"/> (from the discovery listing) is stored so the row reads as its real
+        /// title before processing; it never overwrites a title already captured at ingest.
         /// </summary>
-        public async Task<int> EnqueueAsync(string urlOrId, CancellationToken ct = default)
+        public async Task<int> EnqueueAsync(string urlOrId, string? title = null, CancellationToken ct = default)
         {
             if (!YouTubeUrl.TryGetVideoId(urlOrId, out var videoId))
             {
@@ -40,6 +42,11 @@ namespace SeedForge.Services.Queues
                 existing.AttemptCount = 0;
                 existing.NextAttemptUtc = null;
                 existing.ErrorMessage = null;
+                // Backfill a missing title only; don't clobber one already set (e.g. by Apify ingest).
+                if (string.IsNullOrWhiteSpace(existing.Title) && !string.IsNullOrWhiteSpace(title))
+                {
+                    existing.Title = title;
+                }
                 await db.SaveChangesAsync(ct);
                 return existing.Id;
             }
@@ -48,6 +55,7 @@ namespace SeedForge.Services.Queues
             {
                 YouTubeVideoId = videoId,
                 Url = YouTubeUrl.WatchUrl(videoId),
+                Title = string.IsNullOrWhiteSpace(title) ? null : title,
                 Status = VideoJobStatus.Pending,
                 CreatedAtUtc = DateTime.UtcNow,
             };
