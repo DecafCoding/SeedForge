@@ -10,9 +10,6 @@
 
 <PageTitle>SeedForge</PageTitle>
 
-<h1>SeedForge</h1>
-<p>Turn YouTube channels into scored, version-tracked story concepts — unattended. This overview is your at-a-glance status; use the nav to run, monitor, and re-tune the engine.</p>
-
 @if (_loaded)
 {
     <div class="row g-3 mb-4">
@@ -42,51 +39,6 @@
             </div></div>
         </div>
     </div>
-
-    <h2>Recent concepts</h2>
-    @if (_recent.Count == 0)
-    {
-        <p><em>No concepts yet — add channels or run a transcript through the pipeline.</em></p>
-    }
-    else
-    {
-        <table class="table table-sm">
-            <thead>
-                <tr><th>#</th><th>Title</th><th>Genre</th><th>State</th><th>Created</th></tr>
-            </thead>
-            <tbody>
-                @foreach (var c in _recent)
-                {
-                    <tr>
-                        <td>@c.Id</td>
-                        <td>@c.Title</td>
-                        <td>@c.Genre</td>
-                        <td>
-                            @if (c.IsActive)
-                            {
-                                <span class="badge bg-success">active</span>
-                            }
-                            @if (c.IsStale)
-                            {
-                                <span class="badge bg-warning text-dark">stale</span>
-                            }
-                        </td>
-                        <td>@c.CreatedAtUtc.ToString("u")</td>
-                    </tr>
-                }
-            </tbody>
-        </table>
-    }
-
-    <h2>Quick links</h2>
-    <div class="d-flex flex-wrap gap-2">
-        <a class="btn btn-outline-primary" href="tokencost">Tokens &amp; Cost</a>
-        <a class="btn btn-outline-primary" href="queues">Queues</a>
-        <a class="btn btn-outline-primary" href="channels">Channels</a>
-        <a class="btn btn-outline-primary" href="concepts">Concept browser</a>
-        <a class="btn btn-outline-primary" href="pipeline">Run a transcript</a>
-        <a class="btn btn-outline-primary" href="config">Config profiles</a>
-    </div>
 }
 else
 {
@@ -100,7 +52,6 @@ else
     private int _activeConcepts;
     private int _staleConcepts;
     private int _channels;
-    private List<Concept> _recent = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -109,7 +60,6 @@ else
         _activeConcepts = await Db.Concepts.CountAsync(c => c.IsActive);
         _staleConcepts = await Db.Concepts.CountAsync(c => c.IsStale);
         _channels = await Db.Channels.CountAsync();
-        _recent = await Db.Concepts.OrderByDescending(c => c.Id).Take(10).ToListAsync();
         _loaded = true;
     }
 }

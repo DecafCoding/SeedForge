@@ -75,7 +75,7 @@ else
                         {
                             <button class="btn btn-primary btn-sm me-1" disabled="@_busy"
                                     @onclick="() => SetActiveAsync(profile.Id)">
-                                @(_busy && _activating == profile.Id ? "Switching…" : "Make active")
+                                @(_busy && _activating == profile.Id ? "Switching…" : "Make Active")
                             </button>
                         }
                         <button class="btn btn-outline-secondary btn-sm" disabled="@_busy"
@@ -86,7 +86,7 @@ else
         </tbody>
     </table>
 
-    <button class="btn btn-success btn-sm mb-3" disabled="@_busy" @onclick="BeginNew">+ New profile</button>
+    <button class="btn btn-success btn-sm mb-3" disabled="@_busy" @onclick="BeginNew">+ New Profile</button>
 
     @if (_editing is not null)
     {
@@ -125,7 +125,7 @@ else
                 }
 
                 <button class="btn btn-primary btn-sm me-1" disabled="@(_busy || string.IsNullOrWhiteSpace(_editing.Name))" @onclick="SaveEdit">
-                    @(_busy && _action == "save" ? "Saving…" : "Save profile")
+                    @(_busy && _action == "save" ? "Saving…" : "Save Profile")
                 </button>
                 <button class="btn btn-secondary btn-sm" disabled="@_busy" @onclick="() => _editing = null">Cancel</button>
             </div>

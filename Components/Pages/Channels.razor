@@ -30,7 +30,7 @@
             @(Control.IsPaused(Worker.Discovery) ? "Resume" : "Pause")
         </button>
         <button class="btn btn-sm btn-outline-secondary" disabled="@(_busy || _channels.Count == 0)" @onclick="() => PollNow(null)">
-            Poll all now
+            Poll All Now
         </button>
     </div>
 </div>
@@ -39,7 +39,7 @@
 <div class="input-group mb-3" style="max-width:40rem">
     <input class="form-control" placeholder="UC… id, /channel/ URL, or @@handle" @bind="_input" disabled="@_busy" />
     <button class="btn btn-primary" disabled="@(_busy || string.IsNullOrWhiteSpace(_input))" @onclick="AddChannel">
-        @(_busy ? "Working…" : "Add channel")
+        @(_busy ? "Working…" : "Add Channel")
     </button>
 </div>
 
@@ -60,9 +60,9 @@ else
                 <tr>
                     <td>@channel.Title</td>
                     <td><code>@channel.YouTubeChannelId</code></td>
-                    <td>@(channel.LastPolledUtc?.ToString("u") ?? "—")</td>
+                    <td>@(channel.LastPolledUtc?.ToString("MM/dd/yyyy h:mmtt").ToLowerInvariant() ?? "—")</td>
                     <td class="text-end">
-                        <button class="btn btn-sm btn-outline-secondary me-2" disabled="@_busy" @onclick="() => PollNow(channel.Id)">Poll now</button>
+                        <button class="btn btn-sm btn-outline-secondary me-2" disabled="@_busy" @onclick="() => PollNow(channel.Id)">Poll Now</button>
                         <button class="btn btn-sm btn-outline-danger" disabled="@_busy" @onclick="() => Remove(channel.Id)">Remove</button>
                     </td>
                 </tr>
