@@ -64,13 +64,54 @@ namespace SeedForge.UnitTests
             var (iteration, queue) = Build(fake, db, apify);
             var videoId = await queue.EnqueueAsync("abc12345678");
 
-            var processed = await iteration.ProcessOnceAsync(CancellationToken.None);
+            var outcome = await iteration.ProcessOnceAsync(CancellationToken.None);
 
-            Assert.True(processed);
+            Assert.Equal(ProcessTickOutcome.Productive, outcome);
             using var read = _h.NewDb();
             Assert.Equal(VideoJobStatus.Done, read.Videos.Single(v => v.Id == videoId).Status);
             Assert.Equal(2, read.ConceptJobs.Count(j => j.Status == ConceptJobStatus.Pending));
             Assert.Empty(read.Concepts); // builds nothing
+        }
+
+        [Fact]
+        public async Task ProcessOnceAsync_reports_NoIdeas_when_a_video_yields_no_survivors()
+        {
+            const string text = "First we cover terraforming Mars over generations.";
+            var apify = FakeApifyIngestionService.WithTranscript("abc12345678", text);
+            // One segment, one idea, but it scores below the 0.6 threshold ⇒ zero survivors ⇒ ProcessedNoIdeas.
+            var fake = new FakeLlmClient()
+                .SetStructured(new SegmentationResponse(new()
+                {
+                    new SegmentBoundaryDto(0, "Terraforming", "First we cover terraforming Mars"),
+                }))
+                .SetStructured(new ExtractIdeasResponse(new() { new ThinIdeaDto("A weak premise.") }))
+                .SetStructured(new ScoreIdeasResponse(new() { new IdeaScoreDto(0, 0.1, 0.1, 0.1, 0.1) }));
+
+            using var db = _h.NewDb();
+            var (iteration, queue) = Build(fake, db, apify);
+            var videoId = await queue.EnqueueAsync("abc12345678");
+
+            var outcome = await iteration.ProcessOnceAsync(CancellationToken.None);
+
+            Assert.Equal(ProcessTickOutcome.NoIdeas, outcome);
+            using var read = _h.NewDb();
+            Assert.Equal(VideoJobStatus.ProcessedNoIdeas, read.Videos.Single(v => v.Id == videoId).Status);
+            Assert.Empty(read.ConceptJobs); // nothing enqueued
+        }
+
+        [Fact]
+        public async Task ProcessOnceAsync_reports_NoIdeas_when_there_is_no_transcript()
+        {
+            var apify = FakeApifyIngestionService.NoTranscript("abc12345678");
+            using var db = _h.NewDb();
+            var (iteration, queue) = Build(new FakeLlmClient(), db, apify);
+            var videoId = await queue.EnqueueAsync("abc12345678");
+
+            var outcome = await iteration.ProcessOnceAsync(CancellationToken.None);
+
+            Assert.Equal(ProcessTickOutcome.NoIdeas, outcome);
+            using var read = _h.NewDb();
+            Assert.Equal(VideoJobStatus.NoTranscript, read.Videos.Single(v => v.Id == videoId).Status);
         }
 
         [Fact]
@@ -80,7 +121,7 @@ namespace SeedForge.UnitTests
             using var db = _h.NewDb();
             var (iteration, _) = Build(fake, db, FakeApifyIngestionService.NoTranscript("unused00000"));
 
-            Assert.False(await iteration.ProcessOnceAsync(CancellationToken.None));
+            Assert.Equal(ProcessTickOutcome.Idle, await iteration.ProcessOnceAsync(CancellationToken.None));
         }
 
         [Fact]
@@ -102,9 +143,9 @@ namespace SeedForge.UnitTests
             var videoId = await queue.EnqueueAsync("abc12345678");
 
             // Must not throw: the error is caught and the job is rescheduled.
-            var processed = await iteration.ProcessOnceAsync(CancellationToken.None);
+            var outcome = await iteration.ProcessOnceAsync(CancellationToken.None);
 
-            Assert.True(processed);
+            Assert.Equal(ProcessTickOutcome.Failed, outcome);
             using var read = _h.NewDb();
             var video = read.Videos.Single(v => v.Id == videoId);
             Assert.Equal(VideoJobStatus.Pending, video.Status);
