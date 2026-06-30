@@ -102,7 +102,7 @@
     <table class="table table-sm">
         <thead>
             <tr>
-                <th>Premise</th><th>Novelty</th><th>Coherence</th><th>Sci-Fi</th><th>Formula</th><th>Survivor</th>
+                <th>Premise</th><th>Novelty</th><th>Coherence</th><th>Potential</th><th>Suitability</th><th>Survivor</th>
             </tr>
         </thead>
         <tbody>
@@ -115,8 +115,8 @@
                     {
                         <td>@score.Novelty.ToString("0.00")</td>
                         <td>@score.Coherence.ToString("0.00")</td>
-                        <td>@score.SciFiPotential.ToString("0.00")</td>
-                        <td>@score.FormulaFit.ToString("0.00")</td>
+                        <td>@score.Potential.ToString("0.00")</td>
+                        <td>@score.Suitability.ToString("0.00")</td>
                         <td>@(score.PassedThreshold ? "✓" : "—")</td>
                     }
                     else

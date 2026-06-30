@@ -3,15 +3,13 @@
 @using Microsoft.Extensions.Options
 @using SeedForge.Domain
 @using SeedForge.Features.Discovery
-@using SeedForge.Workers
 @inject ChannelLibrary Library
 @inject PollChannelsHandler PollChannels
-@inject WorkerControl Control
 
 <PageTitle>Channels</PageTitle>
 
 <h1>Channels</h1>
-<p>The discovery library: YouTube channels the Discovery worker polls for new uploads. New uploads are enqueued to the processing queue (drained by the Processing worker on <a href="queues">Queues</a>). The Discovery worker starts <strong>paused</strong> on boot — resume it here, or use <em>Poll now</em> for an on-demand poll.</p>
+<p>The discovery library: YouTube channels polled for new uploads. New uploads are enqueued to the processing queue (drained by the Processing worker on <a href="queues">Queues</a>). Use <em>Poll Now</em> for an on-demand poll.</p>
 
 @if (_error is not null)
 {
@@ -21,19 +19,6 @@
 {
     <div class="alert alert-success">@_message</div>
 }
-
-<div class="card mb-3">
-    <div class="card-body">
-        <h5 class="card-title">Discovery worker</h5>
-        <p class="card-text">Status: <strong>@(Control.IsPaused(Worker.Discovery) ? "Paused" : "Running")</strong></p>
-        <button class="btn btn-sm btn-primary me-2" disabled="@_busy" @onclick="ToggleWorker">
-            @(Control.IsPaused(Worker.Discovery) ? "Resume" : "Pause")
-        </button>
-        <button class="btn btn-sm btn-outline-secondary" disabled="@(_busy || _channels.Count == 0)" @onclick="() => PollNow(null)">
-            Poll All Now
-        </button>
-    </div>
-</div>
 
 <h2>Add a channel</h2>
 <div class="input-group mb-3" style="max-width:40rem">
@@ -52,7 +37,7 @@ else
 {
     <table class="table">
         <thead>
-            <tr><th>Title</th><th>Channel id</th><th>Last polled (UTC)</th><th></th></tr>
+            <tr><th>Title</th><th>Channel id</th><th>Videos</th><th>Last polled (UTC)</th><th></th></tr>
         </thead>
         <tbody>
             @foreach (var channel in _channels)
@@ -60,6 +45,7 @@ else
                 <tr>
                     <td>@channel.Title</td>
                     <td><code>@channel.YouTubeChannelId</code></td>
+                    <td>@(_videoCounts.TryGetValue(channel.Id, out var count) ? count : 0)</td>
                     <td>@(channel.LastPolledUtc?.ToString("MM/dd/yyyy h:mmtt").ToLowerInvariant() ?? "—")</td>
                     <td class="text-end">
                         <button class="btn btn-sm btn-outline-secondary me-2" disabled="@_busy" @onclick="() => PollNow(channel.Id)">Poll Now</button>
@@ -75,6 +61,7 @@ else
 
 @code {
     private List<Channel> _channels = new();
+    private Dictionary<int, int> _videoCounts = new();
     private string _input = string.Empty;
     private bool _busy;
     private string? _error;
@@ -88,17 +75,12 @@ else
         try
         {
             _channels = await Library.ListAsync();
+            _videoCounts = await Library.VideoCountsAsync();
         }
         catch (Exception ex)
         {
             _error = $"Failed to load channels: {ex.Message}";
         }
-    }
-
-    private void ToggleWorker()
-    {
-        if (Control.IsPaused(Worker.Discovery)) Control.Resume(Worker.Discovery);
-        else Control.Pause(Worker.Discovery);
     }
 
     private async Task AddChannel()

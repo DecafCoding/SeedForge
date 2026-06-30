@@ -12,7 +12,7 @@ namespace SeedForge.Features.Browse
     public sealed record IdeaRow(
         int Id, string Premise,
         int? VideoId, string? VideoUrl, string? VideoTitle,
-        double? Novelty, double? Coherence, double? SciFiPotential, double? FormulaFit, double? Mean,
+        double? Novelty, double? Coherence, double? Potential, double? Suitability, double? Mean,
         bool? Passed, DateTime CreatedAtUtc);
 
     /// <summary>
@@ -91,11 +91,11 @@ namespace SeedForge.Features.Browse
             {
                 byIdea.TryGetValue(x.i.Id, out var s);
                 double? mean = s is null ? null
-                    : (s.Novelty + s.Coherence + s.SciFiPotential + s.FormulaFit) / 4.0;
+                    : (s.Novelty + s.Coherence + s.Potential + s.Suitability) / 4.0;
                 return new IdeaRow(
                     x.i.Id, x.i.Premise,
                     x.VideoId, x.VideoUrl, x.VideoTitle ?? x.TranscriptTitle,
-                    s?.Novelty, s?.Coherence, s?.SciFiPotential, s?.FormulaFit, mean,
+                    s?.Novelty, s?.Coherence, s?.Potential, s?.Suitability, mean,
                     s?.PassedThreshold,                      // null ⇒ unscored
                     x.i.CreatedAtUtc);
             }).OrderByDescending(r => r.CreatedAtUtc).ThenByDescending(r => r.Id).ToList();

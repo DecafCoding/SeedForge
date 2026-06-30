@@ -7,8 +7,8 @@ namespace SeedForge.Domain
         public int IdeaId { get; set; }
         public double Novelty { get; set; }
         public double Coherence { get; set; }
-        public double SciFiPotential { get; set; }
-        public double FormulaFit { get; set; }
+        public double Potential { get; set; }
+        public double Suitability { get; set; }
         public bool PassedThreshold { get; set; }
         public ModelSlot Slot { get; set; }
         public string Model { get; set; } = string.Empty;

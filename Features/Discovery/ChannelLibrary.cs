@@ -49,6 +49,17 @@ namespace SeedForge.Features.Discovery
         public Task<List<Channel>> ListAsync(CancellationToken ct = default) =>
             db.Channels.OrderByDescending(c => c.AddedAtUtc).ToListAsync(ct);
 
+        /// <summary>Number of videos in the system per channel row id. Channels with no videos are absent from the map.</summary>
+        public async Task<Dictionary<int, int>> VideoCountsAsync(CancellationToken ct = default)
+        {
+            var counts = await db.Videos
+                .Where(v => v.ChannelId != null)
+                .GroupBy(v => v.ChannelId!.Value)
+                .Select(g => new { ChannelId = g.Key, Count = g.Count() })
+                .ToListAsync(ct);
+            return counts.ToDictionary(c => c.ChannelId, c => c.Count);
+        }
+
         /// <summary>Removes a channel from the library by row id. No-op if it's already gone.</summary>
         public async Task RemoveAsync(int id, CancellationToken ct = default)
         {
