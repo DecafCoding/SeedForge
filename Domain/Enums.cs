@@ -8,7 +8,13 @@ namespace SeedForge.Domain
         Done,
         Failed,
         NoTranscript,
-        ProcessedNoIdeas
+        ProcessedNoIdeas,
+
+        /// <summary>
+        /// Discovered but under the minimum duration (<see cref="Services.YouTube.YouTubeOptions.MinVideoDurationSeconds"/>).
+        /// Kept only as a dedup marker so it is never re-discovered; never queued, never transcribed, hidden from the library.
+        /// </summary>
+        SkippedShort
     }
 
     /// <summary>State of a concept-building <see cref="ConceptJob"/>.</summary>

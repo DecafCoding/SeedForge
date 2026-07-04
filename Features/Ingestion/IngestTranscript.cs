@@ -69,14 +69,14 @@ namespace SeedForge.Features.Ingestion
                         RawDatasetItemJson = ing.RawItemJson,
                         Title = ing.Title,
                         ChannelName = ing.ChannelName,
-                        ApifyCostUnits = ing.CostUnits,
+                        ApifyCostUsd = ing.CostUsd,
                         CreatedAtUtc = DateTime.UtcNow,
                     };
                     db.Transcripts.Add(transcript);
 
                     video.Status = VideoJobStatus.Done;
                     video.Title = ing.Title;
-                    video.ApifyCostUnits = ing.CostUnits;
+                    video.ApifyCostUsd = ing.CostUsd;
                     ApplyMetadata(video, ing.Metadata);
                     await db.SaveChangesAsync(ct);
 
@@ -88,7 +88,7 @@ namespace SeedForge.Features.Ingestion
                 // A present item with no captions is a legitimate outcome, not a failure.
                 video.Status = VideoJobStatus.NoTranscript;
                 video.Title = ing.Title;
-                video.ApifyCostUnits = ing.CostUnits;
+                video.ApifyCostUsd = ing.CostUsd;
                 ApplyMetadata(video, ing.Metadata);
                 await db.SaveChangesAsync(ct);
 

@@ -14,5 +14,12 @@ namespace SeedForge.Services.Apify
 
         /// <summary>Request timeout; a synchronous actor run can take minutes.</summary>
         public int TimeoutSeconds { get; set; } = 300;
+
+        /// <summary>
+        /// Actor price in USD per 1000 videos returned (pay-per-result). The default matches the
+        /// <c>streamers~youtube-scraper</c> actor at $4 / 1000 videos. Per-video cost = value / 1000,
+        /// charged once for each video the run actually returns.
+        /// </summary>
+        public double UsdPerThousandVideos { get; set; } = 4.0;
     }
 }

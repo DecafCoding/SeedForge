@@ -1,5 +1,5 @@
 ﻿<!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-bs-theme="@ServerTheme" class="theme-@ServerTheme">
 
 <head>
     <meta charset="utf-8" />
@@ -7,11 +7,65 @@
     <base href="/" />
     <ResourcePreloader />
     <link rel="stylesheet" href="@Assets["lib/bootstrap/dist/css/bootstrap.min.css"]" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.1/font/bootstrap-icons.min.css">
     <link rel="stylesheet" href="@Assets["app.css"]" />
     <link rel="stylesheet" href="@Assets["SeedForge.styles.css"]" />
     <ImportMap />
     <link rel="icon" type="image/png" href="favicon.png" />
     <HeadOutlet />
+    <script>
+        // Apply saved theme immediately to prevent FOUC. Light/dark only — default dark.
+        (function () {
+            try {
+                const saved = localStorage.getItem('seedforge-theme');
+                const theme = saved === 'light' ? 'light' : 'dark';
+                const html = document.documentElement;
+                html.setAttribute('data-bs-theme', theme);
+                html.classList.remove('theme-light', 'theme-dark');
+                html.classList.add('theme-' + theme);
+            } catch (e) {
+                // localStorage unavailable — server-rendered cookie fallback handles this
+            }
+        })();
+
+        // Global theme setter, called by ThemeToggle via inline onclick.
+        // Plain script so it works on SSR pages where Blazor interactivity isn't wired.
+        window.seedforgeSetTheme = function (theme) {
+            try {
+                if (theme !== 'light' && theme !== 'dark') theme = 'dark';
+                const KEY = 'seedforge-theme';
+                const html = document.documentElement;
+                localStorage.setItem(KEY, theme);
+                document.cookie = KEY + '=' + theme + ';path=/;max-age=31536000;SameSite=Lax';
+                html.setAttribute('data-bs-theme', theme);
+                html.classList.remove('theme-light', 'theme-dark');
+                html.classList.add('theme-' + theme);
+                window.dispatchEvent(new CustomEvent('themeChanged', { detail: theme }));
+            } catch (e) { }
+        };
+
+        // Called by ThemeToggle.OnAfterRenderAsync on interactive pages so the icon
+        // stays in sync when the inline onclick path fires the themeChanged event.
+        window.seedforgeRegisterThemeListener = function (dotNetRef) {
+            window.addEventListener('themeChanged', function (e) {
+                dotNetRef.invokeMethodAsync('OnThemeChangedFromJs', e.detail);
+            });
+        };
+
+        // Re-apply theme after Blazor enhanced navigation patches the DOM.
+        document.addEventListener('DOMContentLoaded', function () {
+            if (typeof Blazor !== 'undefined') {
+                Blazor.addEventListener('enhancedload', function () {
+                    const saved = localStorage.getItem('seedforge-theme');
+                    const theme = saved === 'light' ? 'light' : 'dark';
+                    const html = document.documentElement;
+                    html.setAttribute('data-bs-theme', theme);
+                    html.classList.remove('theme-light', 'theme-dark');
+                    html.classList.add('theme-' + theme);
+                });
+            }
+        });
+    </script>
 </head>
 
 <body>
@@ -22,3 +76,16 @@
 </body>
 
 </html>
+
+@code {
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    // Read theme from cookie so the server renders data-bs-theme on <html> directly.
+    // Avoids a flash of the wrong theme after Blazor enhanced navigation patches the
+    // DOM without re-executing inline <script> tags. Default to dark when missing/invalid.
+    private string ServerTheme =>
+        HttpContext.Request.Cookies.TryGetValue("seedforge-theme", out var t) && t == "light"
+            ? "light"
+            : "dark";
+}

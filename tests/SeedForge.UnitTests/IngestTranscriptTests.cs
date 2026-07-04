@@ -31,13 +31,13 @@ namespace SeedForge.UnitTests
             var video = read.Videos.Single(v => v.Id == result.VideoId);
             Assert.Equal(VideoId, video.YouTubeVideoId);
             Assert.Equal(VideoJobStatus.Done, video.Status);
-            Assert.Equal(1.5, video.ApifyCostUnits);
+            Assert.Equal(1.5, video.ApifyCostUsd);
 
             var transcript = read.Transcripts.Single(t => t.Id == result.TranscriptId);
             Assert.Equal(video.Id, transcript.VideoId);
             Assert.Equal("the transcript text", transcript.PlainText);
             Assert.False(string.IsNullOrWhiteSpace(transcript.RawDatasetItemJson));
-            Assert.Equal(1.5, transcript.ApifyCostUnits);
+            Assert.Equal(1.5, transcript.ApifyCostUsd);
         }
 
         [Fact]

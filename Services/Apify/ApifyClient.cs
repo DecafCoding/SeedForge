@@ -1,12 +1,13 @@
-using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
 
 namespace SeedForge.Services.Apify
 {
-    /// <summary>The dataset items returned by a synchronous actor run, plus best-effort compute-unit cost from the response headers.</summary>
-    public sealed record ApifyDatasetResult(JsonElement Items, double? CostUnits);
+    /// <summary>The dataset items returned by a synchronous actor run. Cost is not carried here — the
+    /// <c>run-sync-get-dataset-items</c> endpoint returns items, not usage, so cost is derived deterministically
+    /// from the actor's pay-per-result price (see <see cref="ApifyOptions.UsdPerThousandVideos"/>).</summary>
+    public sealed record ApifyDatasetResult(JsonElement Items);
 
     /// <summary>
     /// Typed <see cref="HttpClient"/> for the Apify <c>run-sync-get-dataset-items</c> endpoint of one actor.
@@ -16,13 +17,6 @@ namespace SeedForge.Services.Apify
     public sealed class ApifyClient(HttpClient http, IOptions<ApifyOptions> options, ILogger<ApifyClient> log)
     {
         private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
-
-        // Best-effort: run-sync-get-dataset-items returns items, not usage. Probe a couple of plausible cost headers.
-        private static readonly string[] CostHeaderNames =
-        {
-            "x-apify-actor-run-compute-units",
-            "x-apify-compute-units",
-        };
 
         /// <summary>POSTs the actor input to <c>v2/acts/{ActorId}/run-sync-get-dataset-items?token=…</c> and returns the parsed JSON array root.</summary>
         public async Task<ApifyDatasetResult> RunSyncGetDatasetItemsAsync(object input, CancellationToken ct = default)
@@ -70,30 +64,11 @@ namespace SeedForge.Services.Apify
                     throw new ApifyException("Apify response was not valid JSON.", responseBody: raw, inner: ex);
                 }
 
-                var cost = TryReadCost(response);
-                log.LogInformation("Apify run-sync returned {Count} dataset item(s); cost units {Cost}",
-                    root.ValueKind == JsonValueKind.Array ? root.GetArrayLength() : 0, cost?.ToString(CultureInfo.InvariantCulture) ?? "n/a");
+                log.LogInformation("Apify run-sync returned {Count} dataset item(s)",
+                    root.ValueKind == JsonValueKind.Array ? root.GetArrayLength() : 0);
 
-                return new ApifyDatasetResult(root, cost);
+                return new ApifyDatasetResult(root);
             }
-        }
-
-        private static double? TryReadCost(HttpResponseMessage response)
-        {
-            foreach (var name in CostHeaderNames)
-            {
-                if (response.Headers.TryGetValues(name, out var values))
-                {
-                    foreach (var value in values)
-                    {
-                        if (double.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out var units))
-                        {
-                            return units;
-                        }
-                    }
-                }
-            }
-            return null;
         }
     }
 }

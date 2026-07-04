@@ -25,17 +25,28 @@
 
 <div class="row">
     <div class="col-md-4">
-        <h2>Recent ideas</h2>
-        @if (_ideas.Count == 0)
+        <h2>Recent Ideas</h2>
+
+        <div class="form-check form-switch mb-2">
+            <input class="form-check-input" type="checkbox" role="switch" id="hasConcept" @bind="_onlyWithConcept" />
+            <label class="form-check-label" for="hasConcept">Has A Concept</label>
+        </div>
+
+        @{ var shownIdeas = DisplayedIdeas; }
+        @if (shownIdeas.Count == 0)
         {
-            <p><em>No ideas yet — run the pipeline first.</em></p>
+            <p><em>@(_onlyWithConcept ? "No passing ideas have a concept yet." : "No ideas with a passing score yet.")</em></p>
         }
         <div class="list-group">
-            @foreach (var idea in _ideas)
+            @foreach (var idea in shownIdeas)
             {
                 <button class="list-group-item list-group-item-action @(idea.Id == _selectedIdeaId ? "active" : "")"
                         title="@idea.Premise" disabled="@_busy" @onclick="() => SelectAsync(idea.Id)">
                     #@idea.Id — @Truncate(idea.Premise, 160)
+                    @if (_conceptIdeaIds.Contains(idea.Id))
+                    {
+                        <i class="bi bi-book ms-1" title="Has a concept"></i>
+                    }
                 </button>
             }
         </div>
@@ -86,29 +97,36 @@
                 }
             </p>
 
-            <h3>Score history</h3>
+            <h3>Score History</h3>
             <table class="table table-sm">
                 <thead>
-                    <tr><th>#</th><th>Novelty</th><th>Coherence</th><th>Potential</th><th>Suitability</th><th>Passed</th><th>Model</th><th>When</th></tr>
+                    <tr>
+                        <th>#</th>
+                        <th class="text-end" title="Novelty">N</th>
+                        <th class="text-end" title="Coherence">C</th>
+                        <th class="text-end" title="Potential">P</th>
+                        <th class="text-end" title="Suitability">S</th>
+                        <th>Passed</th><th>Model</th><th>When</th>
+                    </tr>
                 </thead>
                 <tbody>
                     @foreach (var s in _scores)
                     {
                         <tr>
                             <td>@s.Id</td>
-                            <td title="@Dec(s.Novelty)">@Whole(s.Novelty)</td>
-                            <td title="@Dec(s.Coherence)">@Whole(s.Coherence)</td>
-                            <td title="@Dec(s.Potential)">@Whole(s.Potential)</td>
-                            <td title="@Dec(s.Suitability)">@Whole(s.Suitability)</td>
+                            <td class="text-end" title="@Dec(s.Novelty)">@Whole(s.Novelty)</td>
+                            <td class="text-end" title="@Dec(s.Coherence)">@Whole(s.Coherence)</td>
+                            <td class="text-end" title="@Dec(s.Potential)">@Whole(s.Potential)</td>
+                            <td class="text-end" title="@Dec(s.Suitability)">@Whole(s.Suitability)</td>
                             <td>@(s.PassedThreshold ? "✓" : "—")</td>
                             <td>@s.Model</td>
-                            <td>@s.CreatedAtUtc.ToString("MM/dd/yyyy h:mmtt").ToLowerInvariant()</td>
+                            <td>@s.CreatedAtUtc.ToDisplay()</td>
                         </tr>
                     }
                 </tbody>
             </table>
 
-            <h3>Concept versions</h3>
+            <h3>Concept Versions</h3>
             @if (_concepts.Count == 0)
             {
                 <p><em>No concepts built for this idea yet.</em></p>
@@ -128,21 +146,14 @@
                                 <span class="badge bg-warning text-dark">stale</span>
                             }
                         </h5>
-                        <p class="card-text">
-                            <strong>Genre:</strong> @c.Genre<br />
-                            <strong>Theme:</strong> @c.Theme<br />
-                            <strong>Hook:</strong> @c.Hook<br />
-                            <strong>Conflict:</strong> @c.Conflict<br />
-                            <strong>Central story question:</strong> @c.CentralStoryQuestion<br />
-                            <small class="text-muted">Model: @c.Model · @c.CreatedAtUtc.ToString("u")</small>
-                        </p>
+                        <div class="card-text">@RenderConceptFields(c)</div>
                     </div>
                 </div>
             }
 
             @if (_concepts.Count >= 2)
             {
-                <h3>Compare versions</h3>
+                <h3>Compare Versions</h3>
                 <div class="d-flex gap-2 mb-2">
                     <select class="form-select w-auto" @bind="_compareAId">
                         <option value="">version A…</option>
@@ -168,7 +179,7 @@
                 }
             }
 
-            <h3>Stored calls (replay)</h3>
+            <h3>Stored Calls (Replay)</h3>
             @if (_calls.Count == 0)
             {
                 <p><em>No stored calls for this idea.</em></p>
@@ -196,6 +207,11 @@
                     }
                 </tbody>
             </table>
+            <p class="small text-muted">
+                <strong>Replay vs Profile</strong> re-runs a stored call using the selected Profile override above
+                (or the active profile when none is chosen) and shows the original and new responses side by side —
+                an A/B check of how a different model/config would answer. It never changes saved data.
+            </p>
 
             @if (_replayResult is not null)
             {
@@ -216,10 +232,16 @@
 </div>
 
 @code {
-    private List<Idea> _ideas = new();
+    private List<Idea> _ideas = new();                       // ideas whose latest score passed
+    private HashSet<int> _conceptIdeaIds = new();            // idea ids that have at least one concept
+    private bool _onlyWithConcept;                           // "Has A Concept" filter
     private List<ConfigProfile> _profiles = new();
     private int? _selectedIdeaId;
     private string? _profileId; // bound as string from the <select>
+
+    // The left-column list, optionally narrowed to ideas that already have a concept.
+    private IReadOnlyList<Idea> DisplayedIdeas =>
+        _onlyWithConcept ? _ideas.Where(i => _conceptIdeaIds.Contains(i.Id)).ToList() : _ideas;
 
     private List<IdeaScore> _scores = new();
     private List<Concept> _concepts = new();
@@ -245,7 +267,28 @@
     protected override async Task OnInitializedAsync()
     {
         _profiles = await Profiles.ListAsync();
-        _ideas = await Db.Ideas.OrderByDescending(i => i.Id).Take(50).ToListAsync();
+        await LoadIdeaListAsync();
+    }
+
+    /// <summary>
+    /// Loads the 50 most recent ideas whose <em>latest</em> score passed, plus the set of idea ids that have a
+    /// concept (for the book marker and the "Has A Concept" filter). Latest-score-per-idea is resolved in memory
+    /// because EF/SQLite won't translate the GroupBy+First shape (mirrors BrowseQueries).
+    /// </summary>
+    private async Task LoadIdeaListAsync()
+    {
+        var latestPass = (await Db.IdeaScores.ToListAsync())
+            .GroupBy(s => s.IdeaId)
+            .ToDictionary(g => g.Key, g => g.OrderByDescending(s => s.Id).First().PassedThreshold);
+        var passingIds = latestPass.Where(kv => kv.Value).Select(kv => kv.Key).ToHashSet();
+
+        _ideas = await Db.Ideas
+            .Where(i => passingIds.Contains(i.Id))
+            .OrderByDescending(i => i.Id)
+            .Take(50)
+            .ToListAsync();
+
+        _conceptIdeaIds = (await Db.Concepts.Select(c => c.IdeaId).Distinct().ToListAsync()).ToHashSet();
     }
 
     private int? ProfileIdValue =>
@@ -294,6 +337,7 @@
         {
             await Regenerate.HandleAsync(new(ideaId, ProfileIdValue), default);
             await LoadIdeaAsync(ideaId);
+            await LoadIdeaListAsync(); // a new concept flips the book marker on
         });
     }
 
@@ -304,6 +348,7 @@
         {
             await Rescore.HandleAsync(new(ideaId), default);
             await LoadIdeaAsync(ideaId);
+            await LoadIdeaListAsync(); // a new verdict can add/remove the idea from the passing list
         });
     }
 
@@ -362,15 +407,35 @@
                         <span class="badge bg-warning text-dark">stale</span>
                     }
                 </h5>
-                <p class="card-text">
-                    <strong>Genre:</strong> @c.Genre<br />
-                    <strong>Theme:</strong> @c.Theme<br />
-                    <strong>Hook:</strong> @c.Hook<br />
-                    <strong>Conflict:</strong> @c.Conflict<br />
-                    <strong>Central story question:</strong> @c.CentralStoryQuestion<br />
-                    <small class="text-muted">Model: @c.Model · @c.CreatedAtUtc.ToString("u")</small>
-                </p>
+                <div class="card-text">@RenderConceptFields(c)</div>
             </div>
         </div>
+    };
+
+    // Genre / Theme / Hook / Conflict / Central Story Question: header on its own line, value directly
+    // below it, one line of space between sections. Shared by the version list and the compare view.
+    private RenderFragment RenderConceptFields(Concept c) => __builder =>
+    {
+        <div class="mb-3">
+            <strong>Genre</strong><br />
+            @c.Genre
+        </div>
+        <div class="mb-3">
+            <strong>Theme</strong><br />
+            @c.Theme
+        </div>
+        <div class="mb-3">
+            <strong>Hook</strong><br />
+            @c.Hook
+        </div>
+        <div class="mb-3">
+            <strong>Conflict</strong><br />
+            @c.Conflict
+        </div>
+        <div class="mb-3">
+            <strong>Central Story Question</strong><br />
+            @c.CentralStoryQuestion
+        </div>
+        <small class="text-muted">Model: @c.Model · @c.CreatedAtUtc.ToDisplay()</small>
     };
 }

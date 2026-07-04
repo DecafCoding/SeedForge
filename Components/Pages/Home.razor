@@ -15,27 +15,26 @@
     <div class="row g-3 mb-4">
         <div class="col-md-3">
             <div class="card text-center"><div class="card-body">
-                <h6 class="text-muted">Videos pending</h6><h3>@_pendingVideos</h3>
-                <a href="queues" class="stretched-link"></a>
-            </div></div>
-        </div>
-        <div class="col-md-3">
-            <div class="card text-center"><div class="card-body">
-                <h6 class="text-muted">Concept jobs pending</h6><h3>@_pendingConcepts</h3>
-                <a href="queues" class="stretched-link"></a>
-            </div></div>
-        </div>
-        <div class="col-md-3">
-            <div class="card text-center"><div class="card-body">
-                <h6 class="text-muted">Active concepts</h6><h3>@_activeConcepts</h3>
-                <small class="text-muted">@_staleConcepts stale</small>
-                <a href="concepts" class="stretched-link"></a>
-            </div></div>
-        </div>
-        <div class="col-md-3">
-            <div class="card text-center"><div class="card-body">
-                <h6 class="text-muted">Channels followed</h6><h3>@_channels</h3>
+                <h6 class="text-muted">Channels Followed</h6><h3>@_channels</h3>
                 <a href="channels" class="stretched-link"></a>
+            </div></div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center"><div class="card-body">
+                <h6 class="text-muted">Videos Pending</h6><h3>@_pendingVideos</h3>
+                <a href="queues" class="stretched-link"></a>
+            </div></div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center"><div class="card-body">
+                <h6 class="text-muted">Concept Jobs Pending</h6><h3>@_pendingConcepts</h3>
+                <a href="queues" class="stretched-link"></a>
+            </div></div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center"><div class="card-body">
+                <h6 class="text-muted">Active/Stale Concepts</h6><h3>@_activeConcepts/@_staleConcepts</h3>
+                <a href="concepts" class="stretched-link"></a>
             </div></div>
         </div>
     </div>
@@ -58,7 +57,7 @@ else
         _pendingVideos = await VideoQueue.CountPendingAsync();
         _pendingConcepts = await ConceptQueue.CountPendingAsync();
         _activeConcepts = await Db.Concepts.CountAsync(c => c.IsActive);
-        _staleConcepts = await Db.Concepts.CountAsync(c => c.IsStale);
+        _staleConcepts = await Db.Concepts.CountAsync(c => c.IsActive && c.IsStale);
         _channels = await Db.Channels.CountAsync();
         _loaded = true;
     }

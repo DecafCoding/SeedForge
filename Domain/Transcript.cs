@@ -9,7 +9,7 @@ namespace SeedForge.Domain
         public string RawDatasetItemJson { get; set; } = string.Empty;
         public string? Title { get; set; }
         public string? ChannelName { get; set; }
-        public double? ApifyCostUnits { get; set; }
+        public double? ApifyCostUsd { get; set; }
         public DateTime CreatedAtUtc { get; set; }
     }
 }

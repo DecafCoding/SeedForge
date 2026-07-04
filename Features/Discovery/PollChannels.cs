@@ -52,26 +52,53 @@ namespace SeedForge.Features.Discovery
                         .Where(v => recentIds.Contains(v.YouTubeVideoId))
                         .Select(v => v.YouTubeVideoId)
                         .ToHashSetAsync(ct);
+                    var fresh = recent.Where(u => !known.Contains(u.VideoId)).ToList();
 
-                    var newVideos = new List<(string YouTubeId, int VideoId)>();
-                    foreach (var upload in recent.Where(u => !known.Contains(u.VideoId)))
+                    // Duration is only known from the videos.list enrichment, and it must be known BEFORE we enqueue so a
+                    // short upload never reaches the (paid) transcript step. Prefetch it here; a failure leaves durations
+                    // unknown, in which case nothing is filtered (fail-open — same as enrichment being off).
+                    var metadata = await FetchMetadataAsync(fresh, ct);
+
+                    var now = DateTime.UtcNow;
+                    var newCount = 0;
+                    var skippedShort = 0;
+                    foreach (var upload in fresh)
                     {
+                        metadata.TryGetValue(upload.VideoId, out var meta);
+
+                        if (meta?.DurationSeconds is int seconds && seconds < _ytOpts.MinVideoDurationSeconds)
+                        {
+                            // Under the minimum: record a terminal SkippedShort marker so it is never re-discovered,
+                            // queued, or transcribed. It carries its metadata so the reason is inspectable.
+                            var shortVideo = new Video
+                            {
+                                YouTubeVideoId = upload.VideoId,
+                                Url = YouTubeUrl.WatchUrl(upload.VideoId),
+                                Title = string.IsNullOrWhiteSpace(upload.Title) ? null : upload.Title,
+                                Status = VideoJobStatus.SkippedShort,
+                                CreatedAtUtc = now,
+                            };
+                            meta.ApplyTo(shortVideo, now);
+                            db.Videos.Add(shortVideo);
+                            skippedShort++;
+                            continue;
+                        }
+
                         var rowId = await videoQueue.EnqueueAsync(upload.VideoId, upload.Title, ct); // idempotent on YouTubeVideoId
-                        newVideos.Add((upload.VideoId, rowId));
+                        if (meta is not null)
+                        {
+                            var video = await db.Videos.FirstOrDefaultAsync(v => v.Id == rowId, ct);
+                            if (video is not null) meta.ApplyTo(video, now);
+                        }
+                        newCount++;
                     }
 
-                    channel.LastPolledUtc = DateTime.UtcNow;
+                    channel.LastPolledUtc = now;
                     await db.SaveChangesAsync(ct);
 
-                    // Optional, quota-gated enrichment: one batched videos.list call stamps metadata onto the new rows.
-                    if (_ytOpts.FetchVideoMetadata && newVideos.Count > 0)
-                    {
-                        await EnrichNewVideosAsync(newVideos, ct);
-                    }
-
-                    log.LogInformation("Polled channel {ChannelId} ({Title}): {New} new of {Total} recent",
-                        channel.Id, channel.Title, newVideos.Count, recent.Count);
-                    summaries.Add(new ChannelPollSummary(channel.Id, channel.Title, newVideos.Count));
+                    log.LogInformation("Polled channel {ChannelId} ({Title}): {New} new, {Short} skipped-short of {Total} recent",
+                        channel.Id, channel.Title, newCount, skippedShort, recent.Count);
+                    summaries.Add(new ChannelPollSummary(channel.Id, channel.Title, newCount));
                 }
                 catch (Exception ex)
                 {
@@ -85,32 +112,30 @@ namespace SeedForge.Features.Discovery
         }
 
         /// <summary>
-        /// Best-effort metadata enrichment for freshly discovered videos: one batched <c>videos.list</c> call, then
-        /// stamps the returned metadata (YouTube-only at discovery — there is no transcript yet) onto the new rows. A
-        /// failure here never aborts the poll; the videos simply stay metadata-less until ingest backfills them.
+        /// Optional, quota-gated duration/metadata prefetch for the fresh uploads: one batched <c>videos.list</c> call
+        /// (YouTube-only at discovery — there is no transcript yet). Returns an empty map when enrichment is off, there
+        /// is nothing to fetch, or the call fails — callers then treat every duration as unknown (nothing filtered).
         /// </summary>
-        private async Task EnrichNewVideosAsync(IReadOnlyList<(string YouTubeId, int VideoId)> newVideos, CancellationToken ct)
+        private async Task<IReadOnlyDictionary<string, VideoMetadata>> FetchMetadataAsync(
+            IReadOnlyList<RecentUpload> fresh, CancellationToken ct)
         {
+            if (!_ytOpts.FetchVideoMetadata || fresh.Count == 0)
+            {
+                return EmptyMetadata;
+            }
+
             try
             {
-                var metadata = await youtube.GetVideoMetadataAsync(newVideos.Select(v => v.YouTubeId), ct);
-                if (metadata.Count == 0) return;
-
-                var idByYouTubeId = newVideos.ToDictionary(v => v.YouTubeId, v => v.VideoId, StringComparer.Ordinal);
-                var now = DateTime.UtcNow;
-                foreach (var (youTubeId, meta) in metadata)
-                {
-                    if (!idByYouTubeId.TryGetValue(youTubeId, out var rowId)) continue;
-                    var video = await db.Videos.FirstOrDefaultAsync(v => v.Id == rowId, ct);
-                    if (video is null) continue;
-                    meta.ApplyTo(video, now);
-                }
-                await db.SaveChangesAsync(ct);
+                return await youtube.GetVideoMetadataAsync(fresh.Select(u => u.VideoId), ct);
             }
             catch (YouTubeException ex)
             {
-                log.LogWarning(ex, "Video-metadata enrichment failed during poll; new videos left without metadata");
+                log.LogWarning(ex, "Video-metadata prefetch failed during poll; durations unknown, no short-filtering applied");
+                return EmptyMetadata;
             }
         }
+
+        private static readonly IReadOnlyDictionary<string, VideoMetadata> EmptyMetadata =
+            new Dictionary<string, VideoMetadata>();
     }
 }

@@ -9,7 +9,7 @@ namespace SeedForge.Domain
         public string Url { get; set; } = string.Empty;
         public string? Title { get; set; }
         public VideoJobStatus Status { get; set; }
-        public double? ApifyCostUnits { get; set; }
+        public double? ApifyCostUsd { get; set; }
         public string? ErrorMessage { get; set; }
         public DateTime CreatedAtUtc { get; set; }
         /// <summary>When the Processing worker reached a terminal outcome (Done / ProcessedNoIdeas / NoTranscript). Null until processed.</summary>

@@ -17,7 +17,7 @@ namespace SeedForge.Features.Observability
 
     /// <summary>
     /// Read-only aggregation of <see cref="Domain.AiCallLog"/> token usage + estimated cost (grouped by stage and by
-    /// provider) plus Apify compute units from transcripts, for the cost/token dashboard. Queries via the context
+    /// provider) plus Apify pay-per-result cost (USD) from transcripts, for the cost/token dashboard. Queries via the context
     /// directly (no repository) and groups in memory — SQLite/EF will not translate every GroupBy+Sum shape, and the
     /// data volume for a single-user tool is small.
     /// </summary>
@@ -56,14 +56,14 @@ namespace SeedForge.Features.Observability
                 rows.Sum(x => x.TotalTokens), rows.Sum(x => x.EstimatedCost));
         }
 
-        /// <summary>Sum of Apify compute units across transcripts created since <paramref name="fromUtc"/>.</summary>
+        /// <summary>Sum of Apify pay-per-result cost (USD) across transcripts created since <paramref name="fromUtc"/>.</summary>
         public async Task<double> ApifyCostAsync(DateTime fromUtc, CancellationToken ct = default)
         {
-            var units = await db.Transcripts
+            var costs = await db.Transcripts
                 .Where(t => t.CreatedAtUtc >= fromUtc)
-                .Select(t => t.ApifyCostUnits)
+                .Select(t => t.ApifyCostUsd)
                 .ToListAsync(ct);
-            return units.Sum(u => u ?? 0);
+            return costs.Sum(c => c ?? 0);
         }
     }
 }

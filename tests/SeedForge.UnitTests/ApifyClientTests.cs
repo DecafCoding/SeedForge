@@ -35,7 +35,7 @@ namespace SeedForge.UnitTests
         }
 
         [Fact]
-        public async Task RunSync_returns_parsed_array_root_and_null_cost_when_no_header()
+        public async Task RunSync_returns_parsed_array_root()
         {
             var handler = new StubHttpMessageHandler("""[{"title":"hi"}]""");
             var client = Build(handler);
@@ -44,7 +44,6 @@ namespace SeedForge.UnitTests
 
             Assert.Equal(System.Text.Json.JsonValueKind.Array, result.Items.ValueKind);
             Assert.Equal(1, result.Items.GetArrayLength());
-            Assert.Null(result.CostUnits);
         }
 
         [Fact]

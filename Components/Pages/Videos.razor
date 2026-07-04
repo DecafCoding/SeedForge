@@ -1,6 +1,5 @@
 @page "/videos"
 @rendermode InteractiveServer
-@using SeedForge.Domain
 @using SeedForge.Features.Browse
 @inject BrowseQueries Browse
 
@@ -25,64 +24,20 @@ else if (_rows.Count == 0)
 else
 {
     <p class="text-muted">@_rows.Count video@(_rows.Count == 1 ? "" : "s").</p>
-    <table class="table table-sm table-hover align-middle">
-        <thead>
-            <tr>
-                <th>Video</th>
-                <th>Status</th>
-                <th class="text-end">Ideas (total/passed)</th>
-                <th class="text-end">Concepts</th>
-                <th>Created</th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var r in _rows)
-            {
-                <tr style="cursor:pointer" @onclick="() => OpenDetails(r.Id)">
-                    <td>
-                        <a href="@($"/videos/{r.Id}")" @onclick:stopPropagation="true">
-                            @(string.IsNullOrWhiteSpace(r.Title) ? r.Url : r.Title)
-                        </a>
-                        @if (!string.IsNullOrWhiteSpace(r.Title))
-                        {
-                            <br /><a href="@r.Url" target="_blank" class="small text-muted" @onclick:stopPropagation="true">@r.Url</a>
-                        }
-                    </td>
-                    <td>@VideoStateLabel(r.Status)</td>
-                    <td class="text-end">
-                        @if (r.IdeaCount == 0)
-                        {
-                            <span class="text-muted">0</span>
-                        }
-                        else
-                        {
-                            <span>@r.IdeaCount/@r.Passed</span>
-                        }
-                    </td>
-                    <td class="text-end">
-                        @if (r.ConceptCount == 0)
-                        {
-                            <span class="text-muted">0</span>
-                        }
-                        else
-                        {
-                            <span>@r.ActiveConceptCount active</span>
-                            <small class="text-muted">/ @r.ConceptCount total</small>
-                        }
-                    </td>
-                    <td><small class="text-muted">@r.CreatedAtUtc.ToString("MM/dd/yyyy")</small></td>
-                </tr>
-            }
-        </tbody>
-    </table>
+    <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-3">
+        @foreach (var r in _rows)
+        {
+            <div class="col">
+                <VideoCard Video="@r" />
+            </div>
+        }
+    </div>
 }
 
 @code {
     private IReadOnlyList<VideoRow> _rows = Array.Empty<VideoRow>();
     private bool _busy = true;
     private string? _error;
-
-    [Inject] private NavigationManager Nav { get; set; } = default!;
 
     protected override async Task OnInitializedAsync()
     {
@@ -99,18 +54,4 @@ else
             _busy = false;
         }
     }
-
-    private void OpenDetails(int videoId) => Nav.NavigateTo($"/videos/{videoId}");
-
-    // Distinct states must read clearly — a legitimate "Processed · 0 ideas" is NOT a failure. Mirrors Queues.razor.
-    private static string VideoStateLabel(VideoJobStatus status) => status switch
-    {
-        VideoJobStatus.Pending => "Pending",
-        VideoJobStatus.InProgress => "In progress",
-        VideoJobStatus.Done => "Done",
-        VideoJobStatus.Failed => "Failed",
-        VideoJobStatus.NoTranscript => "No transcript",
-        VideoJobStatus.ProcessedNoIdeas => "Processed · 0 ideas",
-        _ => status.ToString(),
-    };
 }

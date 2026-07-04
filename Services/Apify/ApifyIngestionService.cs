@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.Extensions.Options;
 using SeedForge.Domain;
 using SeedForge.Services.YouTube;
 
@@ -9,8 +10,12 @@ namespace SeedForge.Services.Apify
     /// and probes the first dataset item defensively (subtitles / transcript / captions / segments) so a drifted actor
     /// shape never throws. The raw item is preserved; only a client-level <see cref="ApifyException"/> is a fetch failure.
     /// </summary>
-    public sealed class ApifyIngestionService(ApifyClient client, ILogger<ApifyIngestionService> log) : IApifyIngestionService
+    public sealed class ApifyIngestionService(
+        ApifyClient client, IOptions<ApifyOptions> options, ILogger<ApifyIngestionService> log) : IApifyIngestionService
     {
+        /// <summary>Deterministic pay-per-result price for one returned video, in USD.</summary>
+        private double UsdPerVideo => options.Value.UsdPerThousandVideos / 1000.0;
+
         public async Task<IngestedVideo> FetchAsync(string urlOrId, CancellationToken ct = default)
         {
             if (!YouTubeUrl.TryGetVideoId(urlOrId, out var videoId))
@@ -33,10 +38,11 @@ namespace SeedForge.Services.Apify
             var root = result.Items;
 
             // The client throws on a genuine fetch error; an empty dataset is simply "nothing to parse", not a failure.
+            // Pay-per-result: no returned video ⇒ nothing billed (cost 0).
             if (root.ValueKind != JsonValueKind.Array || root.GetArrayLength() == 0)
             {
                 log.LogInformation("Apify returned no dataset item for {VideoId}", videoId);
-                return new IngestedVideo(false, null, null, null, string.Empty, result.CostUnits, videoId);
+                return new IngestedVideo(false, null, null, null, string.Empty, 0.0, videoId);
             }
 
             var item = root[0];
@@ -63,10 +69,11 @@ namespace SeedForge.Services.Apify
                 log.LogWarning(ex, "Apify metadata parse failed for {VideoId}; continuing without metadata", videoId);
             }
 
-            log.LogInformation("Apify item for {VideoId}: hadTranscript={HadTranscript}, title={HasTitle}, metadata={HasMetadata}",
-                videoId, hadTranscript, title is not null, metadata?.HasAnyValue == true);
+            // Pay-per-result: the run returned one video item, so it is billed at the per-video price.
+            log.LogInformation("Apify item for {VideoId}: hadTranscript={HadTranscript}, title={HasTitle}, metadata={HasMetadata}, costUsd={CostUsd}",
+                videoId, hadTranscript, title is not null, metadata?.HasAnyValue == true, UsdPerVideo);
 
-            return new IngestedVideo(hadTranscript, text, title, channel, rawItemJson, result.CostUnits, videoId, metadata);
+            return new IngestedVideo(hadTranscript, text, title, channel, rawItemJson, UsdPerVideo, videoId, metadata);
         }
 
         /// <summary>Joins a <c>subtitles</c> array, accepting either string elements or objects carrying <c>plaintext</c>/<c>text</c>.</summary>
