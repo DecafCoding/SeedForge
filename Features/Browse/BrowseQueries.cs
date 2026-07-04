@@ -25,7 +25,8 @@ namespace SeedForge.Features.Browse
     public sealed record VideoRow(
         int Id, string Url, string? Title, Domain.VideoJobStatus Status,
         int IdeaCount, int Passed, int Failed, int Unscored,
-        int ConceptCount, int ActiveConceptCount, DateTime CreatedAtUtc);
+        int ConceptCount, int ActiveConceptCount, DateTime CreatedAtUtc,
+        string? ThumbnailUrl, int? DurationSeconds, DateTime? PublishedAtUtc);
 
     /// <summary>One concept built from this video's ideas, for the Video Details concept table (links to <c>/concepts</c>).</summary>
     public sealed record ConceptSummary(
@@ -46,16 +47,19 @@ namespace SeedForge.Features.Browse
     /// <paramref name="DurationSeconds"/> is <c>Video.DurationSeconds</c> (Phase 8) or, for rows ingested earlier, parsed
     /// from <c>Transcript.RawDatasetItemJson</c>; null when neither has it. <paramref name="IsProcessedDerived"/> is true
     /// when <paramref name="DateProcessedUtc"/> is derived from the AI log/transcript rather than a stored timestamp.
+    /// <paramref name="TranscriptText"/>/<paramref name="TranscriptFetchedAtUtc"/> carry the Apify-extracted
+    /// <c>Transcript.PlainText</c> and its fetch time; both null when the video has no stored transcript.
     /// </summary>
     public sealed record VideoDetail(
         int Id, string Url, string? Title, string? Channel, int? DurationSeconds,
         Domain.VideoJobStatus Status,
         DateTime DateAddedUtc, DateTime? DateProcessedUtc, bool IsProcessedDerived,
-        double? ApifyCostUnits, int AttemptCount, string? ErrorMessage,
+        double? ApifyCostUsd, int AttemptCount, string? ErrorMessage,
         int SegmentCount, int IdeaCount, int Passed, int Failed, int Unscored,
         IReadOnlyList<ConceptSummary> Concepts,
         IReadOnlyList<AiCallSummary> AiCalls, int TotalTokens, double TotalCost,
-        long? ViewCount, DateTime? PublishedAtUtc, string? ThumbnailUrl);
+        long? ViewCount, DateTime? PublishedAtUtc, string? ThumbnailUrl,
+        string? TranscriptText, DateTime? TranscriptFetchedAtUtc);
 
     /// <summary>
     /// Shared read-only projections for the Phase 9–11 browse pages (Ideas · Videos · Video Details). Queries via the
@@ -111,7 +115,10 @@ namespace SeedForge.Features.Browse
         /// </summary>
         public async Task<IReadOnlyList<VideoRow>> VideoRowsAsync(CancellationToken ct = default)
         {
-            var videos = await db.Videos.OrderByDescending(v => v.Id).ToListAsync(ct);
+            // SkippedShort videos are dedup markers (under the discovery minimum) — never part of the library view.
+            var videos = await db.Videos
+                .Where(v => v.Status != Domain.VideoJobStatus.SkippedShort)
+                .OrderByDescending(v => v.Id).ToListAsync(ct);
 
             // Map ideaId -> videoId via Idea -> Segment -> Transcript -> Video (only transcripts tied to a video).
             var ideaToVideo = await (
@@ -145,7 +152,8 @@ namespace SeedForge.Features.Browse
                 return new VideoRow(
                     v.Id, v.Url, v.Title, v.Status,
                     ideaIds.Count, passed, failed, unscored,
-                    vConcepts.Count, vConcepts.Count(c => c.IsActive), v.CreatedAtUtc);
+                    vConcepts.Count, vConcepts.Count(c => c.IsActive), v.CreatedAtUtc,
+                    v.ThumbnailUrl, v.DurationSeconds, v.PublishedAtUtc);
             }).ToList();
         }
 
@@ -231,11 +239,12 @@ namespace SeedForge.Features.Browse
                 v.Id, v.Url, v.Title, channel, duration,
                 v.Status,
                 v.CreatedAtUtc, processed, derived,
-                v.ApifyCostUnits ?? transcript?.ApifyCostUnits, v.AttemptCount, v.ErrorMessage,
+                v.ApifyCostUsd ?? transcript?.ApifyCostUsd, v.AttemptCount, v.ErrorMessage,
                 segmentCount, ideaIds.Count, passed, failed, unscored,
                 concepts,
                 aiCalls, totalTokens, totalCost,
-                v.ViewCount, v.PublishedAtUtc, v.ThumbnailUrl);
+                v.ViewCount, v.PublishedAtUtc, v.ThumbnailUrl,
+                transcript?.PlainText, transcript?.CreatedAtUtc);
         }
 
         /// <summary>

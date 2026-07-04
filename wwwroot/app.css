@@ -58,3 +58,211 @@ h1:focus {
 .form-floating > .form-control-plaintext:focus::placeholder, .form-floating > .form-control:focus::placeholder {
     text-align: start;
 }
+
+/* ===== NAVIGATION STYLES ===== */
+
+header {
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.navbar-brand {
+    font-size: 1.4rem !important;
+    font-weight: 600 !important;
+    display: flex !important;
+    align-items: center !important;
+}
+
+.navbar-nav .nav-link {
+    font-weight: 500 !important;
+    padding: 0.75rem 1rem !important;
+    border-radius: 0.375rem !important;
+    margin: 0 0.25rem !important;
+    transition: all 0.2s ease-in-out !important;
+    display: flex !important;
+    align-items: center !important;
+    height: auto !important;
+    line-height: 1.25 !important;
+}
+
+.navbar-nav .nav-link:hover {
+    background-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+.navbar-nav .nav-link.active {
+    background-color: rgba(255, 255, 255, 0.15) !important;
+    font-weight: 600 !important;
+    color: #ffffff !important;
+}
+
+/* ===== SIDEBAR CONTENT STYLES ===== */
+
+.sidebar-content .card {
+    border-radius: 0.5rem;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    position: relative;
+    overflow: visible;
+}
+
+    .sidebar-content .card .card-body {
+        overflow: visible;
+    }
+
+/* Grouped nav links rendered as flush list-group rows inside the sidebar cards. */
+.sidebar-content .nav-card .card-header {
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+}
+
+.sidebar-content .list-group-item {
+    background-color: transparent;
+    border-color: var(--sf-border-color);
+    display: flex;
+    align-items: center;
+    font-weight: 500;
+    transition: background-color 0.15s ease-in-out;
+}
+
+    .sidebar-content .list-group-item:hover {
+        background-color: var(--bs-secondary-bg);
+    }
+
+    .sidebar-content .list-group-item.active {
+        background-color: var(--bs-primary);
+        border-color: var(--bs-primary);
+        color: #fff;
+    }
+
+@media (max-width: 992px) {
+    .sidebar-content {
+        margin-top: 2rem;
+    }
+
+        .sidebar-content .card {
+            margin-bottom: 1rem !important;
+        }
+}
+
+/* ===== THEME SUPPORT (light + dark only) ===== */
+
+:root,
+[data-bs-theme="light"] {
+    --bs-body-bg: #ffffff;
+    --bs-body-color: #212529;
+    --sf-content-bg: #f8f9fa;
+    --sf-card-bg: #ffffff;
+    --sf-border-color: #dee2e6;
+}
+
+[data-bs-theme="dark"] {
+    --bs-body-bg: #212529;
+    --bs-body-color: #ffffff;
+    --sf-content-bg: #343a40;
+    --sf-card-bg: #2b2d2f;
+    --sf-border-color: #495057;
+}
+
+html, body {
+    background-color: var(--bs-body-bg) !important;
+    color: var(--bs-body-color) !important;
+    transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+.main-content {
+    background-color: var(--sf-content-bg);
+    min-height: calc(100vh - 56px);
+    transition: background-color 0.3s ease;
+}
+
+.card {
+    background-color: var(--sf-card-bg);
+    border-color: var(--sf-border-color);
+    transition: background-color 0.3s ease, border-color 0.3s ease;
+}
+
+[data-bs-theme="dark"] .dropdown-menu {
+    --bs-dropdown-bg: var(--bs-gray-800);
+    --bs-dropdown-border-color: var(--bs-gray-600);
+}
+
+[data-bs-theme="dark"] .alert-info {
+    --bs-alert-bg: #0c2d48;
+    --bs-alert-border-color: #0f3460;
+    --bs-alert-color: #9ec5e8;
+}
+
+[data-bs-theme="dark"] .form-control,
+[data-bs-theme="dark"] .form-select {
+    background-color: var(--bs-gray-800);
+    border-color: var(--bs-gray-600);
+    color: var(--bs-body-color);
+}
+
+    [data-bs-theme="dark"] .form-control:focus,
+    [data-bs-theme="dark"] .form-select:focus {
+        background-color: var(--bs-gray-700);
+        border-color: var(--bs-primary);
+    }
+
+[data-bs-theme="dark"] .blazor-error-boundary {
+    background-color: #dc3545;
+    color: white;
+}
+
+/* Override bg-light in dark mode so panels/cards adapt to the theme.
+   Excludes .badge so intentional light-on-dark contrast badges are unaffected. */
+[data-bs-theme="dark"] .bg-light:not(.badge) {
+    background-color: var(--sf-content-bg) !important;
+    color: var(--bs-body-color) !important;
+}
+
+[data-bs-theme="dark"] .table {
+    --bs-table-color: var(--bs-body-color);
+    --bs-table-border-color: var(--sf-border-color);
+}
+
+/* ===== SKELETON LOADING ===== */
+.skeleton-card {
+    border: 1px solid var(--bs-border-color);
+    animation: skeleton-pulse 1.5s ease-in-out infinite alternate;
+}
+
+.skeleton-text {
+    height: 16px;
+    background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+    background-size: 200% 100%;
+    animation: skeleton-loading 1.5s infinite;
+    margin-bottom: 8px;
+    border-radius: 4px;
+}
+
+@keyframes skeleton-loading {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+}
+
+@keyframes skeleton-pulse {
+    0% { opacity: 0.6; }
+    100% { opacity: 1; }
+}
+
+[data-bs-theme="dark"] .skeleton-text {
+    background: linear-gradient(90deg, #333 25%, #444 50%, #333 75%);
+    background-size: 200% 100%;
+}
+
+/* ===== PULSE ANIMATIONS ===== */
+@keyframes green-pulse {
+    0%, 100% {
+        box-shadow: 0 0 0 0 rgba(25, 135, 84, 1);
+        background-color: var(--bs-btn-bg, #1b6ec2);
+    }
+    50% {
+        box-shadow: 0 0 0 10px rgba(25, 135, 84, 0);
+        background-color: #198754;
+    }
+}
+
+.btn-pulse-green {
+    animation: green-pulse 2s ease-out 2;
+}

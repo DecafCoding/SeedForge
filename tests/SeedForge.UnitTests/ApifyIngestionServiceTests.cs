@@ -11,8 +11,9 @@ namespace SeedForge.UnitTests
         {
             var handler = new StubHttpMessageHandler(datasetJson);
             var http = new HttpClient(handler) { BaseAddress = new Uri("https://api.apify.com") };
-            var client = new ApifyClient(http, Options.Create(new ApifyOptions { Token = "t" }), NullLogger<ApifyClient>.Instance);
-            return new ApifyIngestionService(client, NullLogger<ApifyIngestionService>.Instance);
+            var options = Options.Create(new ApifyOptions { Token = "t", UsdPerThousandVideos = 4.0 });
+            var client = new ApifyClient(http, options, NullLogger<ApifyClient>.Instance);
+            return new ApifyIngestionService(client, options, NullLogger<ApifyIngestionService>.Instance);
         }
 
         [Fact]
@@ -37,6 +38,7 @@ namespace SeedForge.UnitTests
             Assert.Equal("SciFi Lab", ingested.ChannelName);
             Assert.False(string.IsNullOrWhiteSpace(ingested.RawItemJson));
             Assert.Equal("abc12345678", ingested.YouTubeVideoId);
+            Assert.Equal(0.004, ingested.CostUsd); // one returned video @ $4/1000
         }
 
         [Fact]
@@ -70,6 +72,7 @@ namespace SeedForge.UnitTests
             Assert.False(ingested.HadTranscript);
             Assert.Null(ingested.Text);
             Assert.Equal(string.Empty, ingested.RawItemJson);
+            Assert.Equal(0.0, ingested.CostUsd); // no returned video ⇒ nothing billed
         }
 
         [Fact]

@@ -1,0 +1,84 @@
+@using SeedForge.Domain
+@using SeedForge.Features.Browse
+@inject NavigationManager Nav
+
+@* SkipWatch-style video card: 16:9 thumbnail + title + meta, extended with this app's
+   pipeline yield (Status, Ideas, Concepts) and the "Added" date. Click the thumbnail or
+   title to open the video's details. *@
+<div class="card video-card h-100">
+    <div role="button" @onclick="NavigateToDetails">
+        @if (!string.IsNullOrEmpty(Video.ThumbnailUrl))
+        {
+            <img src="@Video.ThumbnailUrl"
+                 class="card-img-top"
+                 alt="@Video.Title"
+                 loading="lazy"
+                 style="aspect-ratio: 16 / 9; object-fit: cover;" />
+        }
+        else
+        {
+            <div class="card-img-top d-flex align-items-center justify-content-center bg-secondary"
+                 style="aspect-ratio: 16 / 9;">
+                <i class="bi bi-camera-video text-white" style="font-size: 1.75rem;"></i>
+            </div>
+        }
+    </div>
+
+    <div class="card-body">
+        <h6 class="card-title mb-1">
+            <span role="button" @onclick="NavigateToDetails">
+                @(string.IsNullOrWhiteSpace(Video.Title) ? Video.Url : Video.Title)
+            </span>
+            <a href="@Video.Url" target="_blank" class="text-muted ms-1" title="Open on YouTube" @onclick:stopPropagation="true">
+                <i class="bi bi-box-arrow-up-right"></i>
+            </a>
+        </h6>
+
+        <div class="text-muted small mb-2 d-flex flex-wrap align-items-center gap-3">
+            @if (Video.DurationSeconds.HasValue)
+            {
+                <span title="Duration"><i class="bi bi-clock me-1"></i>@Video.DurationSeconds.ToYouTubeLength()</span>
+            }
+            <span title="Added">Added @Video.CreatedAtUtc.ToRelativeAgo()</span>
+        </div>
+
+        <div class="d-flex flex-wrap align-items-center gap-2 mb-2 small">
+            <span class="badge @StatusBadgeClass(Video.Status)">@VideoStateLabel(Video.Status)</span>
+            <span title="Passed ideas">
+                <i class="bi bi-lightbulb me-1"></i>@Video.Passed
+            </span>
+            <span title="Active concepts">
+                <i class="bi bi-book me-1"></i>@Video.ActiveConceptCount
+            </span>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public VideoRow Video { get; set; } = default!;
+
+    private void NavigateToDetails() => Nav.NavigateTo($"/videos/{Video.Id}");
+
+    // Distinct states must read clearly — a legitimate "Processed · 0 ideas" is NOT a failure. Mirrors Videos/Queues.
+    private static string VideoStateLabel(VideoJobStatus status) => status switch
+    {
+        VideoJobStatus.Pending => "Pending",
+        VideoJobStatus.InProgress => "In progress",
+        VideoJobStatus.Done => "Done",
+        VideoJobStatus.Failed => "Failed",
+        VideoJobStatus.NoTranscript => "No transcript",
+        VideoJobStatus.ProcessedNoIdeas => "Processed · 0 ideas",
+        VideoJobStatus.SkippedShort => "Skipped · under 3m",
+        _ => status.ToString(),
+    };
+
+    private static string StatusBadgeClass(VideoJobStatus status) => status switch
+    {
+        VideoJobStatus.Done => "text-bg-success",
+        VideoJobStatus.InProgress => "text-bg-info",
+        VideoJobStatus.Failed => "text-bg-danger",
+        VideoJobStatus.ProcessedNoIdeas => "text-bg-warning",
+        VideoJobStatus.NoTranscript => "text-bg-secondary",
+        _ => "text-bg-secondary",
+    };
+}

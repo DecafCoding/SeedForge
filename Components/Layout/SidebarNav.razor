@@ -1,0 +1,125 @@
+@implements IDisposable
+@inject NavigationManager NavigationManager
+
+@* Grouped navigation, rendered as SkipWatch-style sidebar cards. Each card is a
+   flush list-group of NavLinks; the active route is highlighted via NavLink's
+   "active" class. *@
+
+<div class="card nav-card mb-4">
+    <div class="card-header">
+        <i class="bi bi-speedometer2 me-2"></i> Overview
+    </div>
+    <div class="list-group list-group-flush">
+        <NavLink class="list-group-item list-group-item-action" href="" Match="NavLinkMatch.All">
+            <i class="bi bi-house-door me-2"></i> Home
+        </NavLink>
+        <NavLink class="list-group-item list-group-item-action" href="tokencost">
+            <i class="bi bi-bar-chart me-2"></i> Tokens &amp; Cost
+        </NavLink>
+        <NavLink class="list-group-item list-group-item-action" href="queues">
+            <i class="bi bi-hdd-stack me-2"></i> Queues
+        </NavLink>
+    </div>
+</div>
+
+<div class="card nav-card mb-4">
+    <div class="card-header">
+        <i class="bi bi-collection me-2"></i> Library
+    </div>
+    <div class="list-group list-group-flush">
+        <NavLink class="list-group-item list-group-item-action" href="channels">
+            <i class="bi bi-broadcast me-2"></i> Channels
+        </NavLink>
+        <NavLink class="list-group-item list-group-item-action" href="ideas">
+            <i class="bi bi-lightbulb me-2"></i> Ideas
+        </NavLink>
+        <NavLink class="list-group-item list-group-item-action" href="videos">
+            <i class="bi bi-camera-video me-2"></i> Videos
+        </NavLink>
+        <NavLink class="list-group-item list-group-item-action" href="concepts">
+            <i class="bi bi-collection-fill me-2"></i> Concepts
+        </NavLink>
+    </div>
+</div>
+
+<div class="card nav-card mb-4">
+    <div class="card-header">
+        <i class="bi bi-diagram-3 me-2"></i> Pipeline
+    </div>
+    <div class="list-group list-group-flush">
+        <NavLink class="list-group-item list-group-item-action" href="pipeline">
+            <i class="bi bi-play-circle me-2"></i> Run
+        </NavLink>
+        <NavLink class="list-group-item list-group-item-action" href="replay">
+            <i class="bi bi-arrow-repeat me-2"></i> Replay
+        </NavLink>
+    </div>
+</div>
+
+<div class="card nav-card mb-4">
+    <div class="card-header">
+        <i class="bi bi-gear me-2"></i> System
+    </div>
+    <div class="list-group list-group-flush">
+        <NavLink class="list-group-item list-group-item-action" href="config">
+            <i class="bi bi-sliders me-2"></i> Config
+        </NavLink>
+        <NavLink class="list-group-item list-group-item-action" href="diagnostics">
+            <i class="bi bi-hdd-network me-2"></i> Diagnostics
+        </NavLink>
+        <NavLink class="list-group-item list-group-item-action" href="auth">
+            <i class="bi bi-lock me-2"></i> Auth Required
+        </NavLink>
+    </div>
+</div>
+
+<div class="card nav-card mb-4">
+    <div class="card-header">
+        <i class="bi bi-person-circle me-2"></i> Account
+    </div>
+    <div class="list-group list-group-flush">
+        <AuthorizeView>
+            <Authorized>
+                <NavLink class="list-group-item list-group-item-action" href="Account/Manage">
+                    <i class="bi bi-person me-2"></i> @context.User.Identity?.Name
+                </NavLink>
+                <form action="Account/Logout" method="post" class="list-group-item p-0 border-0">
+                    <AntiforgeryToken />
+                    <input type="hidden" name="ReturnUrl" value="@currentUrl" />
+                    <button type="submit" class="list-group-item list-group-item-action border-0 w-100 text-start">
+                        <i class="bi bi-box-arrow-left me-2"></i> Logout
+                    </button>
+                </form>
+            </Authorized>
+            <NotAuthorized>
+                <NavLink class="list-group-item list-group-item-action" href="Account/Register">
+                    <i class="bi bi-person-plus me-2"></i> Register
+                </NavLink>
+                <NavLink class="list-group-item list-group-item-action" href="Account/Login">
+                    <i class="bi bi-box-arrow-in-right me-2"></i> Login
+                </NavLink>
+            </NotAuthorized>
+        </AuthorizeView>
+    </div>
+</div>
+
+@code {
+    private string? currentUrl;
+
+    protected override void OnInitialized()
+    {
+        currentUrl = NavigationManager.ToBaseRelativePath(NavigationManager.Uri);
+        NavigationManager.LocationChanged += OnLocationChanged;
+    }
+
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        currentUrl = NavigationManager.ToBaseRelativePath(e.Location);
+        StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        NavigationManager.LocationChanged -= OnLocationChanged;
+    }
+}

@@ -17,5 +17,13 @@ namespace SeedForge.Services.YouTube
         /// (1 quota unit per ≤50 ids). Set false to spend zero extra quota — discovery then behaves exactly as before.
         /// </summary>
         public bool FetchVideoMetadata { get; set; } = true;
+
+        /// <summary>
+        /// Minimum video length (seconds) discovery will accept. Uploads shorter than this are recorded as
+        /// <see cref="Domain.VideoJobStatus.SkippedShort"/> and never queued or transcribed. Default 180 (3 minutes).
+        /// Requires <see cref="FetchVideoMetadata"/> — the duration comes from the <c>videos.list</c> enrichment call;
+        /// with enrichment off, duration is unknown at discovery and nothing is filtered.
+        /// </summary>
+        public int MinVideoDurationSeconds { get; set; } = 180;
     }
 }

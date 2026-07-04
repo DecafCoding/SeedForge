@@ -120,9 +120,9 @@ namespace SeedForge.UnitTests
             using (var db = NewDb())
             {
                 db.Transcripts.AddRange(
-                    new Transcript { PlainText = "a", ApifyCostUnits = 0.4, CreatedAtUtc = Now },
-                    new Transcript { PlainText = "b", ApifyCostUnits = 0.6, CreatedAtUtc = Now },
-                    new Transcript { PlainText = "c", ApifyCostUnits = null, CreatedAtUtc = Now });
+                    new Transcript { PlainText = "a", ApifyCostUsd = 0.4, CreatedAtUtc = Now },
+                    new Transcript { PlainText = "b", ApifyCostUsd = 0.6, CreatedAtUtc = Now },
+                    new Transcript { PlainText = "c", ApifyCostUsd = null, CreatedAtUtc = Now });
                 db.SaveChanges();
             }
 

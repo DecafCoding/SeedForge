@@ -6,7 +6,7 @@
 <PageTitle>Tokens &amp; Cost</PageTitle>
 
 <h1>Tokens &amp; Cost</h1>
-<p>Token usage and estimated cost per stage and per provider, plus Apify compute units. Local runs report tokens with a cost of 0; a hosted model separates out in the provider view.</p>
+<p>Token usage and estimated cost per stage and per provider, plus Apify pay-per-result cost. Local runs report tokens with a cost of 0; a hosted model separates out in the provider view.</p>
 
 <div class="d-flex align-items-center gap-2 mb-3">
     <label class="form-label mb-0">Window:</label>
@@ -42,7 +42,7 @@
         </div>
         <div class="col-md-3">
             <div class="card text-center"><div class="card-body">
-                <h6 class="text-muted">Apify units</h6><h3>@_apifyUnits.ToString("0.####")</h3>
+                <h6 class="text-muted">Apify Cost</h6><h3>@_apifyUsd.ToString("C4")</h3>
             </div></div>
         </div>
     </div>
@@ -113,7 +113,7 @@ else
     private IReadOnlyList<StageCost>? _perStage;
     private IReadOnlyList<ProviderCost>? _perProvider;
     private CostTotals? _totals;
-    private double _apifyUnits;
+    private double _apifyUsd;
 
     protected override async Task OnInitializedAsync() => await ReloadAsync();
 
@@ -126,7 +126,7 @@ else
             _perStage = await Costs.PerStageAsync(fromUtc);
             _perProvider = await Costs.PerProviderAsync(fromUtc);
             _totals = await Costs.TotalsAsync(fromUtc);
-            _apifyUnits = await Costs.ApifyCostAsync(fromUtc);
+            _apifyUsd = await Costs.ApifyCostAsync(fromUtc);
         }
         finally
         {

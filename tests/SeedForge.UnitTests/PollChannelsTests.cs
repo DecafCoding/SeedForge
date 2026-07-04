@@ -142,6 +142,63 @@ namespace SeedForge.UnitTests
         }
 
         [Fact]
+        public async Task Poll_skips_videos_under_the_minimum_duration_without_enqueuing()
+        {
+            var channelId = SeedChannel();
+            var yt = new FakeYouTubeDataClient()
+                .HasRecent(UploadsId, "shortvid001", "longvid0001")
+                .HasMetadata("shortvid001", Meta(durationSeconds: 120))  // under 3m ⇒ skipped
+                .HasMetadata("longvid0001", Meta(durationSeconds: 600)); // over 3m ⇒ enqueued
+
+            using var db = _h.NewDb();
+            var result = await NewHandler(yt, db, fetchVideoMetadata: true)
+                .HandleAsync(new PollChannelsRequest(channelId), CancellationToken.None);
+
+            // Only the long video counts as a new (enqueued) upload.
+            Assert.Equal(1, result.Channels[0].NewVideoCount);
+
+            using var read = _h.NewDb();
+            var shortVideo = read.Videos.Single(v => v.YouTubeVideoId == "shortvid001");
+            Assert.Equal(VideoJobStatus.SkippedShort, shortVideo.Status); // recorded, never queued
+            Assert.Equal(120, shortVideo.DurationSeconds);                // metadata kept for inspection
+
+            Assert.Equal(VideoJobStatus.Pending, read.Videos.Single(v => v.YouTubeVideoId == "longvid0001").Status);
+
+            // The skipped row is a dedup marker; no transcript work happened.
+            Assert.Empty(read.Transcripts);
+        }
+
+        [Fact]
+        public async Task Poll_skipped_short_video_is_not_re_enqueued_on_a_later_poll()
+        {
+            var channelId = SeedChannel();
+            var yt = new FakeYouTubeDataClient()
+                .HasRecent(UploadsId, "shortvid001")
+                .HasMetadata("shortvid001", Meta(durationSeconds: 90));
+
+            using (var db = _h.NewDb())
+            {
+                await NewHandler(yt, db, fetchVideoMetadata: true)
+                    .HandleAsync(new PollChannelsRequest(channelId), CancellationToken.None);
+            }
+
+            // Second poll sees the same id — it is already known, so nothing new is added and it stays SkippedShort.
+            using var db2 = _h.NewDb();
+            var result = await NewHandler(yt, db2, fetchVideoMetadata: true)
+                .HandleAsync(new PollChannelsRequest(channelId), CancellationToken.None);
+
+            Assert.Equal(0, result.Channels[0].NewVideoCount);
+            using var read = _h.NewDb();
+            Assert.Equal(1, read.Videos.Count(v => v.YouTubeVideoId == "shortvid001"));
+            Assert.Equal(VideoJobStatus.SkippedShort, read.Videos.Single(v => v.YouTubeVideoId == "shortvid001").Status);
+        }
+
+        private static VideoMetadata Meta(int durationSeconds) => new(
+            DurationSeconds: durationSeconds, ViewCount: null, LikeCount: null, CommentCount: null,
+            PublishedAtUtc: null, Description: null, ThumbnailUrl: null, YouTubeChannelId: null,
+            Source: MetadataSource.YouTube);
+
+        [Fact]
         public async Task Poll_with_enrichment_off_makes_no_videos_list_call()
         {
             var channelId = SeedChannel();

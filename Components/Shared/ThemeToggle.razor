@@ -1,0 +1,83 @@
+@using Microsoft.AspNetCore.Http
+@using SeedForge.Services.Theme
+@inject IThemeService ThemeService
+@inject IJSRuntime JS
+@implements IDisposable
+
+@* Compact light/dark toggle. The inline onclick uses the global seedforgeSetTheme
+   helper from App.razor so it works on static-SSR pages where Blazor interactivity
+   isn't wired up. Interop below only keeps the icon in sync on interactive pages. *@
+<button class="btn btn-sm theme-toggle border-0"
+        type="button"
+        title="Toggle light / dark theme"
+        aria-label="Toggle light / dark theme"
+        onclick="seedforgeSetTheme('@(_currentTheme == "dark" ? "light" : "dark")')">
+    <i class="@(_currentTheme == "dark" ? "bi bi-moon-fill" : "bi bi-sun-fill")"></i>
+</button>
+
+@code {
+    private string _currentTheme = "dark";
+    private DotNetObjectReference<ThemeToggle>? _selfRef;
+
+    [CascadingParameter]
+    private HttpContext? HttpContext { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (HttpContext?.Request.Cookies.TryGetValue("seedforge-theme", out var cookieTheme) == true
+            && !string.IsNullOrEmpty(cookieTheme))
+        {
+            _currentTheme = cookieTheme == "light" ? "light" : "dark";
+        }
+        else
+        {
+            _currentTheme = await ThemeService.GetThemeAsync();
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            var actualTheme = await ThemeService.GetThemeAsync();
+            if (actualTheme != _currentTheme)
+            {
+                _currentTheme = actualTheme;
+                StateHasChanged();
+            }
+
+            _selfRef = DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("seedforgeRegisterThemeListener", _selfRef);
+        }
+    }
+
+    [JSInvokable]
+    public void OnThemeChangedFromJs(string newTheme)
+    {
+        _currentTheme = newTheme == "light" ? "light" : "dark";
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        _selfRef?.Dispose();
+    }
+}
+
+<style>
+    .theme-toggle {
+        color: inherit;
+        line-height: 1;
+        padding: 0.25rem 0.5rem;
+    }
+
+    .theme-toggle:hover {
+        color: inherit;
+        background-color: rgba(255, 255, 255, 0.15);
+    }
+
+    .theme-toggle i {
+        font-size: 1.1rem;
+        vertical-align: middle;
+    }
+</style>

@@ -38,7 +38,7 @@ else
                 <dd class="col-sm-8">@(_v.Channel ?? "—")</dd>
 
                 <dt class="col-sm-4">Duration</dt>
-                <dd class="col-sm-8">@FormatDuration(_v.DurationSeconds)</dd>
+                <dd class="col-sm-8">@_v.DurationSeconds.ToYouTubeLength()</dd>
 
                 @if (_v.ViewCount is long views)
                 {
@@ -48,7 +48,7 @@ else
                 @if (_v.PublishedAtUtc is DateTime published)
                 {
                     <dt class="col-sm-4">Published</dt>
-                    <dd class="col-sm-8">@published.ToString("u")</dd>
+                    <dd class="col-sm-8">@published.ToDisplay()</dd>
                 }
             </dl>
 
@@ -58,13 +58,13 @@ else
                 <dd class="col-sm-8">@VideoStateLabel(_v.Status)</dd>
 
                 <dt class="col-sm-4">Date added</dt>
-                <dd class="col-sm-8">@_v.DateAddedUtc.ToString("u")</dd>
+                <dd class="col-sm-8">@_v.DateAddedUtc.ToDisplay()</dd>
 
                 <dt class="col-sm-4">Date processed</dt>
                 <dd class="col-sm-8">
                     @if (_v.DateProcessedUtc is DateTime processed)
                     {
-                        <span>@processed.ToString("u")</span>
+                        <span>@processed.ToDisplay()</span>
                         @if (_v.IsProcessedDerived)
                         {
                             <span class="badge bg-secondary ms-1" title="Derived from the AI trace / transcript, not a stored timestamp">derived</span>
@@ -80,7 +80,7 @@ else
                 <dd class="col-sm-8">@_v.AttemptCount</dd>
 
                 <dt class="col-sm-4">Apify cost</dt>
-                <dd class="col-sm-8">@(_v.ApifyCostUnits is double cost ? cost.ToString("0.####") + " units" : "—")</dd>
+                <dd class="col-sm-8">@(_v.ApifyCostUsd is double cost ? cost.ToString("C4") : "—")</dd>
 
                 @if (!string.IsNullOrWhiteSpace(_v.ErrorMessage))
                 {
@@ -112,6 +112,26 @@ else
             </dl>
         </div>
     </div>
+
+    <h2>Transcript</h2>
+    @if (string.IsNullOrWhiteSpace(_v.TranscriptText))
+    {
+        <p><em>No transcript stored for this video.</em></p>
+    }
+    else
+    {
+        <details class="mb-4">
+            <summary class="text-muted">
+                @_v.TranscriptText.Length.ToString("N0") characters
+                @if (_v.TranscriptFetchedAtUtc is DateTime fetched)
+                {
+                    <span> · fetched @fetched.ToDisplay()</span>
+                }
+                <span> — click to expand</span>
+            </summary>
+            <pre class="border rounded p-3 mt-2 mb-0" style="white-space: pre-wrap; max-height: 400px; overflow-y: auto;">@_v.TranscriptText</pre>
+        </details>
+    }
 
     <h2>Concepts</h2>
     @if (_v.Concepts.Count == 0)
@@ -145,7 +165,7 @@ else
                             }
                         </td>
                         <td>@c.Model</td>
-                        <td><small class="text-muted">@c.CreatedAtUtc.ToString("u")</small></td>
+                        <td><small class="text-muted">@c.CreatedAtUtc.ToDisplay()</small></td>
                     </tr>
                 }
             </tbody>
@@ -174,7 +194,7 @@ else
                         <td class="text-end">@call.TotalTokens</td>
                         <td class="text-end">@call.EstimatedCost.ToString("0.######")</td>
                         <td>@(call.Success ? "✓" : "✗")</td>
-                        <td><small class="text-muted">@call.CreatedAtUtc.ToString("u")</small></td>
+                        <td><small class="text-muted">@call.CreatedAtUtc.ToDisplay()</small></td>
                     </tr>
                 }
             </tbody>
@@ -247,12 +267,6 @@ else
         }
     }
 
-    private static string FormatDuration(int? seconds)
-    {
-        if (seconds is not int s) return "—";
-        var t = TimeSpan.FromSeconds(s);
-        return t.TotalHours >= 1 ? $"{(int)t.TotalHours}:{t.Minutes:00}:{t.Seconds:00}" : $"{t.Minutes}:{t.Seconds:00}";
-    }
 
     // Mirrors Videos.razor / Queues.razor — a legitimate "Processed · 0 ideas" is NOT a failure.
     private static string VideoStateLabel(VideoJobStatus status) => status switch
@@ -263,6 +277,7 @@ else
         VideoJobStatus.Failed => "Failed",
         VideoJobStatus.NoTranscript => "No transcript",
         VideoJobStatus.ProcessedNoIdeas => "Processed · 0 ideas",
+        VideoJobStatus.SkippedShort => "Skipped · under 3m",
         _ => status.ToString(),
     };
 }

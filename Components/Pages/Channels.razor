@@ -46,7 +46,7 @@ else
                     <td>@channel.Title</td>
                     <td><code>@channel.YouTubeChannelId</code></td>
                     <td>@(_videoCounts.TryGetValue(channel.Id, out var count) ? count : 0)</td>
-                    <td>@(channel.LastPolledUtc?.ToString("MM/dd/yyyy h:mmtt").ToLowerInvariant() ?? "—")</td>
+                    <td>@channel.LastPolledUtc.ToDisplay()</td>
                     <td class="text-end">
                         <button class="btn btn-sm btn-outline-secondary me-2" disabled="@_busy" @onclick="() => PollNow(channel.Id)">Poll Now</button>
                         <button class="btn btn-sm btn-outline-danger" disabled="@_busy" @onclick="() => Remove(channel.Id)">Remove</button>

@@ -1,20 +1,21 @@
-﻿@inherits LayoutComponentBase
+@inherits LayoutComponentBase
 
 <div class="page">
-    <div class="sidebar">
+    <header>
         <NavMenu />
-    </div>
+    </header>
 
-    <main>
-        <div class="top-row px-4">
-            <a href="tokencost">Tokens &amp; Cost</a>
-            <a href="queues">Queues</a>
-            <a href="concepts">Concepts</a>
+    <main class="main-content">
+        <div class="container-fluid px-4 py-3">
+            <div class="row">
+                <aside class="col-lg-3 col-md-4 sidebar-content order-md-1 order-2">
+                    <SidebarNav />
+                </aside>
+                <section class="col-lg-9 col-md-8 order-md-2 order-1">
+                    @Body
+                </section>
+            </div>
         </div>
-
-        <article class="content px-4">
-            @Body
-        </article>
     </main>
 </div>
 
