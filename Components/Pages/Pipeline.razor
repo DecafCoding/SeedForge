@@ -9,10 +9,12 @@
 
 <PageTitle>Pipeline</PageTitle>
 
-<h1>Pipeline</h1>
-<p>Run a transcript through segmentation → extraction → scoring → concept building. Either paste a transcript or fetch one from a YouTube URL via Apify.</p>
+<PageHeader Eyebrow="Pipeline" Icon="bi-play-circle" Title="Pipeline">
+    Run a transcript through segmentation → extraction → scoring → concept building.
+    Either paste a transcript or fetch one from a YouTube URL via Apify.
+</PageHeader>
 
-<h2>From a YouTube URL</h2>
+<h2 class="h5 mb-2">From a YouTube URL</h2>
 <div class="mb-3">
     <label class="form-label" for="url">YouTube URL or video id</label>
     <input id="url" class="form-control" placeholder="https://www.youtube.com/watch?v=…" @bind="_urlInput" disabled="@_busy" />
@@ -21,9 +23,7 @@
     @(_busy ? "Working…" : "Fetch & Run")
 </button>
 
-<hr />
-
-<h2>From pasted text</h2>
+<h2 class="h5 mt-4 mb-2">From pasted text</h2>
 <div class="mb-3">
     <label class="form-label" for="title">Title (optional)</label>
     <input id="title" class="form-control" @bind="_title" disabled="@_busy" />
@@ -81,15 +81,14 @@
 
 @if (_result is not null)
 {
-    <hr />
-    <h2>Result</h2>
+    <h2 class="h4 mt-4 mb-2">Result</h2>
     <p>
-        Correlation id: <code>@_result.CorrelationId</code> —
+        Correlation id: <span class="sf-mono" style="font-size:.85rem;">@_result.CorrelationId</span> —
         @_segments.Count segment(s), @_ideas.Count idea(s),
         @_result.SurvivorIds.Count survivor(s), @_concepts.Count concept(s).
     </p>
 
-    <h3>Segments</h3>
+    <h3 class="h5 mt-3 mb-2">Segments</h3>
     @foreach (var seg in _segments)
     {
         <details>
@@ -98,8 +97,9 @@
         </details>
     }
 
-    <h3>Ideas &amp; Scores</h3>
-    <table class="table table-sm">
+    <h3 class="h5 mt-3 mb-2">Ideas &amp; Scores</h3>
+    <div class="card mb-4"><div class="card-body p-0">
+    <table class="table table-sm m-0 mx-1">
         <thead>
             <tr>
                 <th>Premise</th><th>Novelty</th><th>Coherence</th><th>Potential</th><th>Suitability</th><th>Survivor</th>
@@ -127,8 +127,9 @@
             }
         </tbody>
     </table>
+    </div></div>
 
-    <h3>Concepts</h3>
+    <h3 class="h5 mt-3 mb-2">Concepts</h3>
     @if (_concepts.Count == 0)
     {
         <p><em>No survivors produced concepts.</em></p>
@@ -149,8 +150,9 @@
         </div>
     }
 
-    <h3>AI Trace</h3>
-    <table class="table table-sm">
+    <h3 class="h5 mt-3 mb-2">AI Trace</h3>
+    <div class="card mb-4"><div class="card-body p-0">
+    <table class="table table-sm m-0 mx-1">
         <thead>
             <tr>
                 <th>Stage</th><th>Slot</th><th>Model</th><th>Tokens</th><th>Latency</th><th>OK</th>
@@ -170,6 +172,7 @@
             }
         </tbody>
     </table>
+    </div></div>
 }
 
 @code {

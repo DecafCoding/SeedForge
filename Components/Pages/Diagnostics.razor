@@ -6,10 +6,12 @@
 
 <PageTitle>Diagnostics</PageTitle>
 
-<h1>AI Diagnostics</h1>
-<p>Test connectivity to each model slot's configured endpoint.</p>
+<PageHeader Eyebrow="System" Icon="bi-hdd-network" Title="AI Diagnostics">
+    Test connectivity to each model slot's configured endpoint.
+</PageHeader>
 
-<table class="table">
+<div class="card mb-3"><div class="card-body p-0">
+<table class="table m-0 mx-1">
     <thead>
         <tr>
             <th>Slot</th>
@@ -44,6 +46,7 @@
         }
     </tbody>
 </table>
+</div></div>
 
 @code {
     private readonly Dictionary<ModelSlot, ConnectionResult> _results = new();

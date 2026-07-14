@@ -14,8 +14,11 @@
 
 <PageTitle>Queues</PageTitle>
 
-<h1>Queues</h1>
-<p>Per-worker monitoring and controls for the unattended pipeline: pending counts, drain-time ETA, pause/resume, process-now, and recent item states. Workers start <strong>paused</strong> on boot — resume them here when you're ready to spend on Apify / the model.</p>
+<PageHeader Eyebrow="Overview" Icon="bi-hdd-stack" Title="Queues">
+    Per-worker monitoring and controls for the unattended pipeline: pending counts, drain-time ETA,
+    pause/resume, process-now, and recent item states. Workers start <strong>paused</strong> on boot —
+    resume them here when you're ready to spend on Apify / the model.
+</PageHeader>
 
 @if (_error is not null)
 {
@@ -87,9 +90,7 @@
     </div>
 </div>
 
-<hr />
-
-<h2>Add a YouTube URL to the processing queue</h2>
+<h2 class="h5 mt-4 mb-2">Add a YouTube URL to the processing queue</h2>
 <div class="input-group mb-3" style="max-width:40rem">
     <input class="form-control" placeholder="https://www.youtube.com/watch?v=…" @bind="_urlInput" disabled="@_busy" />
     <button class="btn btn-primary" disabled="@(_busy || string.IsNullOrWhiteSpace(_urlInput))" @onclick="EnqueueUrl">
@@ -97,9 +98,7 @@
     </button>
 </div>
 
-<hr />
-
-<button class="btn btn-link" disabled="@_busy" @onclick="RefreshAsync">Refresh</button>
+<button class="btn btn-link px-0" disabled="@_busy" @onclick="RefreshAsync">Refresh</button>
 
 @code {
     private WorkerOptions _opts = new();

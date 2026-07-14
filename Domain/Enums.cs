@@ -26,6 +26,21 @@ namespace SeedForge.Domain
         Failed
     }
 
+    /// <summary>
+    /// Manual user verdict on an <see cref="Idea"/> — distinct from the automated score's pass/fail.
+    /// Keep is the sole gate to concept creation (it enqueues a <see cref="ConceptJob"/>), and can
+    /// rescue an idea whose latest score failed; Skip never builds.
+    /// </summary>
+    public enum IdeaDisposition
+    {
+        /// <summary>Default — survivors wait here until the user decides.</summary>
+        Undecided,
+        /// <summary>Build a concept (works even when the latest score failed the threshold).</summary>
+        Keep,
+        /// <summary>Never build a concept for this idea.</summary>
+        Skip
+    }
+
     /// <summary>What caused a <see cref="ConceptJob"/> to be enqueued.</summary>
     public enum ConceptTrigger
     {

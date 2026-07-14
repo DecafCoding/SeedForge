@@ -1,103 +1,128 @@
 @implements IDisposable
 @inject NavigationManager NavigationManager
+@inject ApplicationDbContext Db
+@inject VideoQueue VideoQueue
+@inject ConceptQueue ConceptQueue
 
-@* Grouped navigation, rendered as SkipWatch-style sidebar cards. Each card is a
-   flush list-group of NavLinks; the active route is highlighted via NavLink's
-   "active" class. *@
+@using Microsoft.EntityFrameworkCore
+@using SeedForge.Data
+@using SeedForge.Domain
+@using SeedForge.Services.Queues
 
-<div class="card nav-card mb-4">
-    <div class="card-header">
-        <i class="bi bi-speedometer2 me-2"></i> Overview
+@* Flat navigation rail. Groups are flush list-groups inside one surface panel;
+   NavLink's "active" class is styled globally in wwwroot/app.css
+   (.sidebar-content .list-group-item[.active]). Count badges are decorative —
+   loaded best-effort and hidden when zero or unavailable. *@
+<div style="background:var(--sf-surface);border:1px solid var(--sf-border);border-radius:14px;box-shadow:var(--sf-shadow);padding:6px 4px 12px;">
+
+    <div style="display:flex;align-items:center;gap:8px;padding:14px 14px 8px;color:var(--sf-faint);font-size:.66rem;font-weight:700;letter-spacing:.11em;text-transform:uppercase;">
+        <i class="bi bi-speedometer2"></i><span>Overview</span>
     </div>
     <div class="list-group list-group-flush">
         <NavLink class="list-group-item list-group-item-action" href="" Match="NavLinkMatch.All">
-            <i class="bi bi-house-door me-2"></i> Home
+            <i class="bi bi-house-door me-2"></i><span>Home</span>
         </NavLink>
         <NavLink class="list-group-item list-group-item-action" href="tokencost">
-            <i class="bi bi-bar-chart me-2"></i> Tokens &amp; Cost
+            <i class="bi bi-bar-chart me-2"></i><span>Tokens &amp; Cost</span>
         </NavLink>
         <NavLink class="list-group-item list-group-item-action" href="queues">
-            <i class="bi bi-hdd-stack me-2"></i> Queues
+            <i class="bi bi-hdd-stack me-2"></i><span>Queues</span>
+            @if (_queueCount > 0)
+            {
+                <span style="@BadgeStyle">@_queueCount</span>
+            }
         </NavLink>
     </div>
-</div>
 
-<div class="card nav-card mb-4">
-    <div class="card-header">
-        <i class="bi bi-collection me-2"></i> Library
+    <div style="display:flex;align-items:center;gap:8px;padding:14px 14px 8px;color:var(--sf-faint);font-size:.66rem;font-weight:700;letter-spacing:.11em;text-transform:uppercase;">
+        <i class="bi bi-collection"></i><span>Library</span>
     </div>
     <div class="list-group list-group-flush">
         <NavLink class="list-group-item list-group-item-action" href="channels">
-            <i class="bi bi-broadcast me-2"></i> Channels
+            <i class="bi bi-broadcast me-2"></i><span>Channels</span>
+            @if (_channelCount > 0)
+            {
+                <span style="@BadgeStyle">@_channelCount</span>
+            }
         </NavLink>
         <NavLink class="list-group-item list-group-item-action" href="ideas">
-            <i class="bi bi-lightbulb me-2"></i> Ideas
+            <i class="bi bi-lightbulb me-2"></i><span>Ideas</span>
         </NavLink>
         <NavLink class="list-group-item list-group-item-action" href="videos">
-            <i class="bi bi-camera-video me-2"></i> Videos
+            <i class="bi bi-camera-video me-2"></i><span>Videos</span>
         </NavLink>
         <NavLink class="list-group-item list-group-item-action" href="concepts">
-            <i class="bi bi-collection-fill me-2"></i> Concepts
+            <i class="bi bi-collection-fill me-2"></i><span>Concepts</span>
+            @if (_conceptCount > 0)
+            {
+                <span style="@BadgeStyle">@_conceptCount</span>
+            }
         </NavLink>
     </div>
-</div>
 
-<div class="card nav-card mb-4">
-    <div class="card-header">
-        <i class="bi bi-diagram-3 me-2"></i> Pipeline
+    <div style="display:flex;align-items:center;gap:8px;padding:14px 14px 8px;color:var(--sf-faint);font-size:.66rem;font-weight:700;letter-spacing:.11em;text-transform:uppercase;">
+        <i class="bi bi-diagram-3"></i><span>Pipeline</span>
     </div>
     <div class="list-group list-group-flush">
         <NavLink class="list-group-item list-group-item-action" href="pipeline">
-            <i class="bi bi-play-circle me-2"></i> Run
+            <i class="bi bi-play-circle me-2"></i><span>Run</span>
         </NavLink>
         <NavLink class="list-group-item list-group-item-action" href="replay">
-            <i class="bi bi-arrow-repeat me-2"></i> Replay
+            <i class="bi bi-arrow-repeat me-2"></i><span>Replay</span>
         </NavLink>
     </div>
-</div>
 
-<div class="card nav-card mb-4">
-    <div class="card-header">
-        <i class="bi bi-gear me-2"></i> System
+    <div style="display:flex;align-items:center;gap:8px;padding:14px 14px 8px;color:var(--sf-faint);font-size:.66rem;font-weight:700;letter-spacing:.11em;text-transform:uppercase;">
+        <i class="bi bi-gear"></i><span>System</span>
     </div>
     <div class="list-group list-group-flush">
         <NavLink class="list-group-item list-group-item-action" href="config">
-            <i class="bi bi-sliders me-2"></i> Config
+            <i class="bi bi-sliders me-2"></i><span>Config</span>
         </NavLink>
         <NavLink class="list-group-item list-group-item-action" href="diagnostics">
-            <i class="bi bi-hdd-network me-2"></i> Diagnostics
+            <i class="bi bi-hdd-network me-2"></i><span>Diagnostics</span>
         </NavLink>
         <NavLink class="list-group-item list-group-item-action" href="auth">
-            <i class="bi bi-lock me-2"></i> Auth Required
+            <i class="bi bi-lock me-2"></i><span>Auth Required</span>
         </NavLink>
     </div>
-</div>
 
-<div class="card nav-card mb-4">
-    <div class="card-header">
-        <i class="bi bi-person-circle me-2"></i> Account
-    </div>
-    <div class="list-group list-group-flush">
+    @* Account chip pinned at the foot of the rail. *@
+    <div style="margin:12px 10px 2px;padding:11px 12px;border:1px solid var(--sf-border-soft);border-radius:11px;background:var(--sf-surface-2);">
         <AuthorizeView>
             <Authorized>
-                <NavLink class="list-group-item list-group-item-action" href="Account/Manage">
-                    <i class="bi bi-person me-2"></i> @context.User.Identity?.Name
-                </NavLink>
-                <form action="Account/Logout" method="post" class="list-group-item p-0 border-0">
-                    <AntiforgeryToken />
-                    <input type="hidden" name="ReturnUrl" value="@currentUrl" />
-                    <button type="submit" class="list-group-item list-group-item-action border-0 w-100 text-start">
-                        <i class="bi bi-box-arrow-left me-2"></i> Logout
-                    </button>
-                </form>
+                <div class="d-flex align-items-center gap-2">
+                    <span style="width:30px;height:30px;flex:0 0 30px;border-radius:50%;background:rgba(var(--sf-accent-rgb),.13);color:var(--sf-accent);display:inline-flex;align-items:center;justify-content:center;">
+                        <i class="bi bi-person" style="font-size:15px;"></i>
+                    </span>
+                    <a href="Account/Manage" class="text-decoration-none" style="min-width:0;flex:1;">
+                        <div style="font-size:.8rem;font-weight:600;color:var(--sf-ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">@context.User.Identity?.Name</div>
+                        <div style="font-size:.7rem;color:var(--sf-faint);">Manage account</div>
+                    </a>
+                    <form action="Account/Logout" method="post" class="m-0">
+                        <AntiforgeryToken />
+                        <input type="hidden" name="ReturnUrl" value="@currentUrl" />
+                        <button type="submit" class="btn btn-sm btn-outline-secondary border-0" title="Logout"
+                                style="padding:.25rem .5rem;">
+                            <i class="bi bi-box-arrow-left"></i>
+                        </button>
+                    </form>
+                </div>
             </Authorized>
             <NotAuthorized>
-                <NavLink class="list-group-item list-group-item-action" href="Account/Register">
-                    <i class="bi bi-person-plus me-2"></i> Register
-                </NavLink>
-                <NavLink class="list-group-item list-group-item-action" href="Account/Login">
-                    <i class="bi bi-box-arrow-in-right me-2"></i> Login
-                </NavLink>
+                <div class="d-flex align-items-center gap-2 mb-2">
+                    <span style="width:30px;height:30px;flex:0 0 30px;border-radius:50%;background:rgba(var(--sf-accent-rgb),.13);color:var(--sf-accent);display:inline-flex;align-items:center;justify-content:center;">
+                        <i class="bi bi-person" style="font-size:15px;"></i>
+                    </span>
+                    <div style="min-width:0;">
+                        <div style="font-size:.8rem;font-weight:600;color:var(--sf-ink);">Signed out</div>
+                        <div style="font-size:.7rem;color:var(--sf-faint);">Single-user workspace</div>
+                    </div>
+                </div>
+                <div class="d-flex gap-2">
+                    <a href="Account/Login" class="btn btn-sm btn-outline-secondary flex-fill">Login</a>
+                    <a href="Account/Register" class="btn btn-sm btn-outline-primary flex-fill">Register</a>
+                </div>
             </NotAuthorized>
         </AuthorizeView>
     </div>
@@ -105,11 +130,30 @@
 
 @code {
     private string? currentUrl;
+    private int _queueCount;
+    private int _channelCount;
+    private int _conceptCount;
 
-    protected override void OnInitialized()
+    // Right-aligned mono count pill shared by the nav rows.
+    private const string BadgeStyle =
+        "margin-left:auto;font-family:var(--sf-mono);font-size:.66rem;font-weight:600;padding:1px 8px;border-radius:20px;background:rgba(var(--sf-accent-rgb),.15);color:var(--sf-accent);";
+
+    protected override async Task OnInitializedAsync()
     {
         currentUrl = NavigationManager.ToBaseRelativePath(NavigationManager.Uri);
         NavigationManager.LocationChanged += OnLocationChanged;
+
+        // Counts are decorative — never let a load failure break the layout.
+        try
+        {
+            _channelCount = await Db.Channels.CountAsync();
+            _conceptCount = await Db.Concepts.CountAsync(c => c.IsActive);
+            _queueCount = await VideoQueue.CountPendingAsync() + await ConceptQueue.CountPendingAsync();
+        }
+        catch
+        {
+            // leave counts at 0; badges hide themselves
+        }
     }
 
     private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)

@@ -6,7 +6,6 @@ using SeedForge.Features.Extraction;
 using SeedForge.Features.Ingestion;
 using SeedForge.Features.Scoring;
 using SeedForge.Features.Segmentation;
-using SeedForge.Services.Queues;
 
 namespace SeedForge.Pipeline
 {
@@ -28,16 +27,16 @@ namespace SeedForge.Pipeline
         string CorrelationId);
 
     /// <summary>
-    /// The outcome of the worker-facing processing path (stops at scoring): the survivors found and the ConceptJobs
-    /// enqueued for them. <see cref="Status"/> is the intended video outcome (Done / ProcessedNoIdeas /
-    /// NoTranscript / Failed) for the caller to record on the queue. No concepts are built here.
+    /// The outcome of the worker-facing processing path (stops at scoring): the survivors found, which then wait
+    /// Undecided for the user's Keep decision on /ideas — no ConceptJobs are enqueued here. <see cref="Status"/> is
+    /// the intended video outcome (Done / ProcessedNoIdeas / NoTranscript / Failed) for the caller to record on the
+    /// queue. No concepts are built here.
     /// </summary>
     public sealed record ProcessVideoResult(
         int VideoId,
         int? TranscriptId,
         VideoJobStatus Status,
         IReadOnlyList<int> SurvivorIds,
-        IReadOnlyList<int> EnqueuedConceptJobIds,
         string CorrelationId);
 
     /// <summary>
@@ -53,7 +52,6 @@ namespace SeedForge.Pipeline
         ExtractIdeasHandler extract,
         ScoreIdeasHandler score,
         BuildConceptHandler build,
-        ConceptQueue conceptQueue,
         ILogger<PipelineRunner> log)
     {
         /// <summary>Paste-text entry: persists a video-less <see cref="Transcript"/> then runs the four-stage pipeline on it.</summary>
@@ -104,11 +102,17 @@ namespace SeedForge.Pipeline
             var (segmentIds, ideaIds, survivorIds) = await RunProcessingFromTranscriptAsync(transcriptId, correlationId, ct);
 
             // 4) Build a concept for each survivor only (inline — the manual page wants immediate feedback).
+            // Running this page IS the user decision, so each built survivor is recorded as Keep to stay
+            // consistent with the worker path, where Keep is what triggers the build.
             var conceptIds = new List<int>();
             foreach (var survivorId in survivorIds)
             {
                 conceptIds.Add(await build.HandleAsync(new(survivorId, correlationId), ct));
+                var idea = await db.Ideas.FirstAsync(i => i.Id == survivorId, ct);
+                idea.Disposition = IdeaDisposition.Keep;
+                idea.DispositionAtUtc = DateTime.UtcNow;
             }
+            await db.SaveChangesAsync(ct);
 
             log.LogInformation(
                 "Pipeline run {Corr} done: {Segments} segment(s), {Ideas} idea(s), {Survivors} survivor(s), {Concepts} concept(s)",
@@ -118,11 +122,11 @@ namespace SeedForge.Pipeline
         }
 
         /// <summary>
-        /// Worker-facing entry: process one queued video to the scoring seam and enqueue a ConceptJob per survivor —
-        /// it ingests the transcript (if not yet present), runs segment → extract → score, and <strong>builds no
-        /// concepts</strong> (a separate Concept worker drains the enqueued jobs on its own cadence). Returns the
-        /// intended video status for the caller to record on the queue: Done (survivors &gt; 0) / ProcessedNoIdeas
-        /// (zero survivors) / the ingest-set NoTranscript or Failed when there was nothing to process.
+        /// Worker-facing entry: process one queued video to the scoring seam — it ingests the transcript (if not yet
+        /// present), runs segment → extract → score, and <strong>builds no concepts and enqueues no jobs</strong>:
+        /// survivors wait Undecided until the user marks them Keep on /ideas, which is what enqueues the ConceptJob.
+        /// Returns the intended video status for the caller to record on the queue: Done (survivors &gt; 0) /
+        /// ProcessedNoIdeas (zero survivors) / the ingest-set NoTranscript or Failed when there was nothing to process.
         /// </summary>
         public async Task<ProcessVideoResult> ProcessVideoJobAsync(int videoId, CancellationToken ct = default)
         {
@@ -145,7 +149,7 @@ namespace SeedForge.Pipeline
                         videoId, ingested.Status, correlationId);
                     return new ProcessVideoResult(
                         videoId, ingested.TranscriptId, ingested.Status,
-                        Array.Empty<int>(), Array.Empty<int>(), correlationId);
+                        Array.Empty<int>(), correlationId);
                 }
                 transcriptId = ingested.TranscriptId;
             }
@@ -153,19 +157,13 @@ namespace SeedForge.Pipeline
             // Stages 1–3 only (stops at scoring).
             var (_, _, survivorIds) = await RunProcessingFromTranscriptAsync(transcriptId.Value, correlationId, ct);
 
-            // Enqueue one Auto ConceptJob per survivor; the Concept worker develops them later.
-            var enqueued = new List<int>();
-            foreach (var survivorId in survivorIds)
-            {
-                enqueued.Add(await conceptQueue.EnqueueAsync(survivorId, ConceptTrigger.Auto, ct: ct));
-            }
-
+            // Survivors are NOT enqueued: they wait Undecided for the user's Keep decision on /ideas.
             // Zero survivors is a legitimate outcome (ProcessedNoIdeas), never Failed.
             var status = survivorIds.Count > 0 ? VideoJobStatus.Done : VideoJobStatus.ProcessedNoIdeas;
-            log.LogInformation("Video {VideoId} processed: {Survivors} survivor(s) ⇒ {Enqueued} ConceptJob(s), status {Status} (corr {Corr})",
-                videoId, survivorIds.Count, enqueued.Count, status, correlationId);
+            log.LogInformation("Video {VideoId} processed: {Survivors} survivor(s) awaiting Keep/Skip, status {Status} (corr {Corr})",
+                videoId, survivorIds.Count, status, correlationId);
 
-            return new ProcessVideoResult(videoId, transcriptId, status, survivorIds, enqueued, correlationId);
+            return new ProcessVideoResult(videoId, transcriptId, status, survivorIds, correlationId);
         }
 
         /// <summary>

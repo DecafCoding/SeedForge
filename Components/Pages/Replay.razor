@@ -11,8 +11,10 @@
 
 <PageTitle>Replay A/B</PageTitle>
 
-<h1>Replay A/B</h1>
-<p>Re-run a stored AI call against a different profile and compare the original output with the new one, side by side. The replay writes a fresh log; the original call is never modified.</p>
+<PageHeader Eyebrow="Pipeline" Icon="bi-arrow-repeat" Title="Replay A/B">
+    Re-run a stored AI call against a different profile and compare the original output with the new one,
+    side by side. The replay writes a fresh log; the original call is never modified.
+</PageHeader>
 
 @if (_error is not null)
 {
@@ -32,7 +34,7 @@
 
 <div class="row">
     <div class="col-md-5">
-        <h2>Recent calls</h2>
+        <h2 class="h5 mb-2">Recent calls</h2>
         @if (_logs.Count == 0)
         {
             <p><em>No stored calls match.</em></p>
@@ -59,7 +61,7 @@
         }
         else
         {
-            <h2>Call #@_selected.Id</h2>
+            <h2 class="h5 mb-2">Call <span class="sf-mono">#@_selected.Id</span></h2>
             <div class="d-flex align-items-end gap-2 mb-3 flex-wrap">
                 <div>
                     <label class="form-label mb-0">Target slot</label>
@@ -92,19 +94,19 @@
 
             @if (_result is null)
             {
-                <h5>Stored response (@_selected.Model)</h5>
-                <pre class="border p-2">@_selected.RawResponse</pre>
+                <h5>Stored response (<span class="sf-mono" style="font-size:.85em;">@_selected.Model</span>)</h5>
+                <pre class="border p-2" style="background:var(--sf-surface-2);border-color:var(--sf-border) !important;border-radius:8px;color:var(--sf-ink);white-space:pre-wrap;">@_selected.RawResponse</pre>
             }
             else
             {
                 <div class="row">
                     <div class="col-md-6">
-                        <h5>Original (@_result.OriginalModel)</h5>
-                        <pre class="border p-2">@_result.OriginalResponse</pre>
+                        <h5>Original (<span class="sf-mono" style="font-size:.85em;">@_result.OriginalModel</span>)</h5>
+                        <pre class="border p-2" style="background:var(--sf-surface-2);border-color:var(--sf-border) !important;border-radius:8px;color:var(--sf-ink);white-space:pre-wrap;">@_result.OriginalResponse</pre>
                     </div>
                     <div class="col-md-6">
-                        <h5>Replay (@_result.NewModel)</h5>
-                        <pre class="border p-2">@_result.NewResponse</pre>
+                        <h5>Replay (<span class="sf-mono" style="font-size:.85em;">@_result.NewModel</span>)</h5>
+                        <pre class="border p-2" style="background:var(--sf-surface-2);border-color:var(--sf-border) !important;border-radius:8px;color:var(--sf-ink);white-space:pre-wrap;">@_result.NewResponse</pre>
                     </div>
                 </div>
             }

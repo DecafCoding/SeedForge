@@ -52,6 +52,7 @@ namespace SeedForge.Data
             builder.Entity<ConceptJob>().Property(j => j.Trigger).HasConversion<string>();
             builder.Entity<ConceptJob>().Property(j => j.SlotOverride).HasConversion<string>();
             builder.Entity<IdeaScore>().Property(s => s.Slot).HasConversion<string>();
+            builder.Entity<Idea>().Property(i => i.Disposition).HasConversion<string>();
             builder.Entity<Concept>().Property(c => c.Slot).HasConversion<string>();
             builder.Entity<AiCallLog>().Property(l => l.Slot).HasConversion<string>();
 

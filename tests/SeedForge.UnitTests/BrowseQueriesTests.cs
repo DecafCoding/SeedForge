@@ -133,6 +133,24 @@ namespace SeedForge.UnitTests
         }
 
         [Fact]
+        public async Task IdeaRowsAsync_projects_the_ideas_disposition()
+        {
+            var ideaId = SeedVideoIdea("kept idea", Now);
+            using (var db = NewDb())
+            {
+                var idea = db.Ideas.Single(i => i.Id == ideaId);
+                idea.Disposition = IdeaDisposition.Keep;
+                idea.DispositionAtUtc = Now;
+                db.SaveChanges();
+            }
+
+            using var read = NewDb();
+            var rows = await new BrowseQueries(read).IdeaRowsAsync();
+
+            Assert.Equal(IdeaDisposition.Keep, Assert.Single(rows).Disposition);
+        }
+
+        [Fact]
         public async Task IdeaRowsAsync_orders_newest_first()
         {
             var older = SeedVideoIdea("older", Now.AddDays(-2));

@@ -1,66 +1,29 @@
 @using Microsoft.AspNetCore.Http
-@using SeedForge.Services.Theme
-@inject IThemeService ThemeService
-@inject IJSRuntime JS
-@implements IDisposable
 
-@* Compact light/dark toggle. The inline onclick uses the global seedforgeSetTheme
-   helper from App.razor so it works on static-SSR pages where Blazor interactivity
-   isn't wired up. Interop below only keeps the icon in sync on interactive pages. *@
+@* Compact light/dark toggle. This component renders in the static-SSR layout, so it
+   holds no per-click state: the inline onclick calls the global seedforgeToggleTheme
+   helper from App.razor, which flips the theme based on the live DOM and updates the
+   icon. The server only renders the correct initial icon from the theme cookie. *@
 <button class="btn btn-sm theme-toggle border-0"
         type="button"
         title="Toggle light / dark theme"
         aria-label="Toggle light / dark theme"
-        onclick="seedforgeSetTheme('@(_currentTheme == "dark" ? "light" : "dark")')">
+        onclick="seedforgeToggleTheme()">
     <i class="@(_currentTheme == "dark" ? "bi bi-moon-fill" : "bi bi-sun-fill")"></i>
 </button>
 
 @code {
     private string _currentTheme = "dark";
-    private DotNetObjectReference<ThemeToggle>? _selfRef;
 
     [CascadingParameter]
     private HttpContext? HttpContext { get; set; }
 
-    protected override async Task OnInitializedAsync()
+    protected override void OnInitialized()
     {
-        if (HttpContext?.Request.Cookies.TryGetValue("seedforge-theme", out var cookieTheme) == true
-            && !string.IsNullOrEmpty(cookieTheme))
+        if (HttpContext?.Request.Cookies.TryGetValue("seedforge-theme", out var cookieTheme) == true)
         {
             _currentTheme = cookieTheme == "light" ? "light" : "dark";
         }
-        else
-        {
-            _currentTheme = await ThemeService.GetThemeAsync();
-        }
-    }
-
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (firstRender)
-        {
-            var actualTheme = await ThemeService.GetThemeAsync();
-            if (actualTheme != _currentTheme)
-            {
-                _currentTheme = actualTheme;
-                StateHasChanged();
-            }
-
-            _selfRef = DotNetObjectReference.Create(this);
-            await JS.InvokeVoidAsync("seedforgeRegisterThemeListener", _selfRef);
-        }
-    }
-
-    [JSInvokable]
-    public void OnThemeChangedFromJs(string newTheme)
-    {
-        _currentTheme = newTheme == "light" ? "light" : "dark";
-        InvokeAsync(StateHasChanged);
-    }
-
-    public void Dispose()
-    {
-        _selfRef?.Dispose();
     }
 }
 
