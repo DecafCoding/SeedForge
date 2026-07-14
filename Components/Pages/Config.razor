@@ -8,8 +8,11 @@
 
 <PageTitle>Config Profiles</PageTitle>
 
-<h1>Config Profiles</h1>
-<p>Manage named model-configuration profiles and switch the active one. Exactly one profile is active. API keys left blank resolve from user-secrets — they are never displayed or stored here. Test connectivity per slot on the <a href="/diagnostics">Diagnostics</a> page.</p>
+<PageHeader Eyebrow="System" Icon="bi-sliders" Title="Config Profiles">
+    Manage named model-configuration profiles and switch the active one. Exactly one profile is active.
+    API keys left blank resolve from user-secrets — they are never displayed or stored here. Test
+    connectivity per slot on the <a href="/diagnostics">Diagnostics</a> page.
+</PageHeader>
 
 @if (_error is not null)
 {
@@ -55,7 +58,8 @@ else
         </div>
     </div>
 
-    <table class="table">
+    <div class="card mb-3"><div class="card-body p-0">
+    <table class="table m-0 mx-1">
         <thead>
             <tr>
                 <th>Profile</th>
@@ -68,7 +72,12 @@ else
             {
                 <tr>
                     <td>@profile.Name</td>
-                    <td>@(profile.IsActive ? "✓ active" : "")</td>
+                    <td>
+                        @if (profile.IsActive)
+                        {
+                            <span class="badge bg-success">active</span>
+                        }
+                    </td>
                     <td>
                         @if (!profile.IsActive)
                         {
@@ -84,8 +93,9 @@ else
             }
         </tbody>
     </table>
+    </div></div>
 
-    <button class="btn btn-success btn-sm mb-3" disabled="@_busy" @onclick="BeginNew">+ New Profile</button>
+    <button class="btn btn-outline-primary btn-sm mb-3" disabled="@_busy" @onclick="BeginNew"><i class="bi bi-plus-lg me-1"></i>New Profile</button>
 
     @if (_editing is not null)
     {

@@ -5,15 +5,16 @@ using SeedForge.Data;
 namespace SeedForge.Features.Browse
 {
     /// <summary>
-    /// One read-only row in the pool-wide ideas table: an idea, its source-video lineage, and the latest score.
-    /// <paramref name="VideoId"/>/<paramref name="VideoUrl"/>/<paramref name="VideoTitle"/> are null for ideas from a
-    /// pasted transcript (no source video). Score fields (and <paramref name="Passed"/>) are null when the idea is unscored.
+    /// One read-only row in the pool-wide ideas table: an idea, its source-video lineage, the latest score, and the
+    /// user's manual Keep/Skip verdict. <paramref name="VideoId"/>/<paramref name="VideoUrl"/>/<paramref name="VideoTitle"/>
+    /// are null for ideas from a pasted transcript (no source video). Score fields (and <paramref name="Passed"/>) are
+    /// null when the idea is unscored.
     /// </summary>
     public sealed record IdeaRow(
         int Id, string Premise,
         int? VideoId, string? VideoUrl, string? VideoTitle,
         double? Novelty, double? Coherence, double? Potential, double? Suitability, double? Mean,
-        bool? Passed, DateTime CreatedAtUtc);
+        bool? Passed, Domain.IdeaDisposition Disposition, DateTime CreatedAtUtc);
 
     /// <summary>
     /// One read-only row in the pool-wide videos table: a source video and its pipeline yield. <paramref name="Passed"/>/
@@ -101,6 +102,7 @@ namespace SeedForge.Features.Browse
                     x.VideoId, x.VideoUrl, x.VideoTitle ?? x.TranscriptTitle,
                     s?.Novelty, s?.Coherence, s?.Potential, s?.Suitability, mean,
                     s?.PassedThreshold,                      // null ⇒ unscored
+                    x.i.Disposition,
                     x.i.CreatedAtUtc);
             }).OrderByDescending(r => r.CreatedAtUtc).ThenByDescending(r => r.Id).ToList();
         }

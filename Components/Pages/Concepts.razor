@@ -15,137 +15,190 @@
 
 <PageTitle>Concept Browser</PageTitle>
 
-<h1>Concept Browser</h1>
-<p>Inspect an idea's version history, regenerate or re-score it, and replay a stored call to A/B configs.</p>
+@* ---- page header ---- *@
+<div style="margin-bottom:1.4rem;">
+    <div style="display:flex;align-items:center;gap:9px;color:var(--sf-faint);font-size:.7rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;margin-bottom:9px;">
+        <i class="bi bi-collection-fill"></i><span>Library</span>
+    </div>
+    <h1 style="font-size:2.15rem;margin:0 0 .5rem;line-height:1;">Concept Browser</h1>
+    <p style="color:var(--sf-muted);font-size:.95rem;max-width:74ch;margin:0;line-height:1.6;">
+        Inspect an idea's append-only history — regenerate or re-score it, and replay a stored call to A/B a
+        different config. Nothing here is ever destroyed; new versions accumulate.
+    </p>
+</div>
 
 @if (_error is not null)
 {
     <div class="alert alert-danger">@_error</div>
 }
 
-<div class="row">
-    <div class="col-md-4">
-        <h2>Recent Ideas</h2>
+<div class="concepts-grid">
 
-        <div class="form-check form-switch mb-2">
-            <input class="form-check-input" type="checkbox" role="switch" id="hasConcept" @bind="_onlyWithConcept" />
-            <label class="form-check-label" for="hasConcept">Has A Concept</label>
+    @* ===== LEFT: idea list ===== *@
+    <div class="concepts-list">
+        <div class="d-flex align-items-baseline justify-content-between mb-2">
+            <h2 class="h5 m-0">Ideas</h2>
+            <span class="sf-mono" style="font-size:.72rem;color:var(--sf-faint);">@DisplayedIdeas.Count shown</span>
+        </div>
+
+        @* filters *@
+        <div class="d-flex flex-wrap gap-2 mb-3">
+            @foreach (var d in new[] { IdeaDisposition.Undecided, IdeaDisposition.Keep, IdeaDisposition.Skip })
+            {
+                var on = _dispositionFilter.Contains(d);
+                <button type="button" class="btn btn-sm @(on ? "btn-primary" : "btn-outline-secondary")"
+                        @onclick="() => ToggleDispositionFilter(d, !_dispositionFilter.Contains(d))">
+                    @d
+                </button>
+            }
+            <button type="button" class="btn btn-sm @(_onlyWithConcept ? "btn-primary" : "btn-outline-secondary")"
+                    @onclick="() => _onlyWithConcept = !_onlyWithConcept">
+                <i class="bi bi-book me-1"></i>Has a Concept
+            </button>
         </div>
 
         @{ var shownIdeas = DisplayedIdeas; }
         @if (shownIdeas.Count == 0)
         {
-            <p><em>@(_onlyWithConcept ? "No passing ideas have a concept yet." : "No ideas with a passing score yet.")</em></p>
+            <p><em>No ideas match the current filters.</em></p>
         }
-        <div class="list-group">
+        <div class="d-flex flex-column gap-2">
             @foreach (var idea in shownIdeas)
             {
-                <button class="list-group-item list-group-item-action @(idea.Id == _selectedIdeaId ? "active" : "")"
+                <button type="button" class="w-100 text-start concept-idea @(idea.Id == _selectedIdeaId ? "is-selected" : "")"
                         title="@idea.Premise" disabled="@_busy" @onclick="() => SelectAsync(idea.Id)">
-                    #@idea.Id — @Truncate(idea.Premise, 160)
-                    @if (_conceptIdeaIds.Contains(idea.Id))
-                    {
-                        <i class="bi bi-book ms-1" title="Has a concept"></i>
-                    }
+                    <div class="d-flex align-items-center gap-2 mb-1">
+                        <span class="sf-mono" style="font-size:.72rem;color:var(--sf-accent);font-weight:600;">#@idea.Id</span>
+                        <span style="@DispPill(idea.Disposition)">@idea.Disposition</span>
+                        @if (_conceptIdeaIds.Contains(idea.Id))
+                        {
+                            <i class="bi bi-book ms-auto" title="Has a concept" style="font-size:.75rem;color:var(--sf-muted);"></i>
+                        }
+                    </div>
+                    <div style="font-size:.82rem;line-height:1.5;color:var(--sf-muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">
+                        @idea.Premise
+                    </div>
                 </button>
             }
         </div>
     </div>
 
-    <div class="col-md-8">
+    @* ===== RIGHT: detail ===== *@
+    <div class="concepts-detail">
         @if (_selectedIdeaId is null)
         {
-            <p><em>Select an idea to see its history.</em></p>
+            <div class="card"><div class="card-body text-center" style="padding:2.5rem;color:var(--sf-muted);">
+                <i class="bi bi-arrow-left-circle" style="font-size:1.5rem;color:var(--sf-faint);display:block;margin-bottom:.6rem;"></i>
+                Select an idea to see its history.
+            </div></div>
         }
         else
         {
-            <div class="d-flex align-items-center gap-2 mb-3">
-                <label class="form-label mb-0">Profile override:</label>
-                <select class="form-select w-auto" @bind="_profileId" disabled="@_busy">
-                    <option value="">(active profile)</option>
-                    @foreach (var p in _profiles)
+            @* lineage + actions *@
+            <div class="card mb-3"><div class="card-body">
+                <p class="small mb-3" style="color:var(--sf-muted);">
+                    <span style="color:var(--sf-faint);font-size:.66rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;margin-right:.4rem;">Lineage</span>
+                    @if (_lineageVideo is not null)
                     {
-                        <option value="@p.Id">@p.Name @(p.IsActive ? "(active)" : "")</option>
+                        <span>Video <a href="@_lineageVideo.Url" target="_blank">#@_lineageVideo.Id @(_lineageVideo.Title ?? _lineageVideo.YouTubeVideoId)</a> → </span>
                     }
-                </select>
-                <button class="btn btn-primary btn-sm" disabled="@_busy" @onclick="RegenerateAsync">
-                    @(_busy && _action == "regen" ? "Regenerating…" : "Regenerate Concept")
-                </button>
-                <button class="btn btn-secondary btn-sm" disabled="@_busy" @onclick="RescoreAsync">
-                    @(_busy && _action == "rescore" ? "Re-scoring…" : "Re-score Idea")
-                </button>
+                    @if (_lineageTranscript is not null)
+                    {
+                        <span>Transcript #@_lineageTranscript.Id @(_lineageTranscript.Title is null ? "" : $"({_lineageTranscript.Title})") → </span>
+                    }
+                    @if (_lineageSegment is not null)
+                    {
+                        <span>Segment #@_lineageSegment.Id [@_lineageSegment.StartChar–@_lineageSegment.EndChar] → </span>
+                    }
+                    <span>Idea #@_selectedIdeaId</span>
+                    @if (_lineageVideo is null && _lineageTranscript is null)
+                    {
+                        <em> (pasted transcript — no source video)</em>
+                    }
+                </p>
+
+                <div class="d-flex align-items-center gap-2 flex-wrap" style="padding-top:.9rem;border-top:1px solid var(--sf-border-soft);">
+                    <label class="form-label mb-0" style="font-size:.8rem;color:var(--sf-muted);">Profile override</label>
+                    <select class="form-select form-select-sm w-auto" @bind="_profileId" disabled="@_busy">
+                        <option value="">(active profile)</option>
+                        @foreach (var p in _profiles)
+                        {
+                            <option value="@p.Id">@p.Name @(p.IsActive ? "(active)" : "")</option>
+                        }
+                    </select>
+                    <button class="btn btn-primary btn-sm" disabled="@_busy" @onclick="RegenerateAsync">
+                        <i class="bi bi-arrow-repeat me-1"></i>@(_busy && _action == "regen" ? "Regenerating…" : "Regenerate Concept")
+                    </button>
+                    <button class="btn btn-secondary btn-sm" disabled="@_busy" @onclick="RescoreAsync">
+                        <i class="bi bi-star me-1"></i>@(_busy && _action == "rescore" ? "Re-scoring…" : "Re-score Idea")
+                    </button>
+                </div>
+            </div></div>
+
+            @* score history *@
+            <div class="d-flex align-items-center gap-2 mb-2">
+                <h3 class="h5 m-0">Score History</h3>
+                <span class="sf-mono" style="font-size:.72rem;color:var(--sf-faint);">append-only · newest first</span>
             </div>
-
-            <h3>Lineage</h3>
-            <p class="small text-muted mb-3">
-                @if (_lineageVideo is not null)
-                {
-                    <span>Video <a href="@_lineageVideo.Url" target="_blank">#@_lineageVideo.Id @(_lineageVideo.Title ?? _lineageVideo.YouTubeVideoId)</a> → </span>
-                }
-                @if (_lineageTranscript is not null)
-                {
-                    <span>Transcript #@_lineageTranscript.Id @(_lineageTranscript.Title is null ? "" : $"({_lineageTranscript.Title})") → </span>
-                }
-                @if (_lineageSegment is not null)
-                {
-                    <span>Segment #@_lineageSegment.Id [@_lineageSegment.StartChar–@_lineageSegment.EndChar] → </span>
-                }
-                <span>Idea #@_selectedIdeaId</span>
-                @if (_lineageVideo is null && _lineageTranscript is null)
-                {
-                    <em> (pasted transcript — no source video)</em>
-                }
-            </p>
-
-            <h3>Score History</h3>
-            <table class="table table-sm">
-                <thead>
-                    <tr>
-                        <th>#</th>
-                        <th class="text-end" title="Novelty">N</th>
-                        <th class="text-end" title="Coherence">C</th>
-                        <th class="text-end" title="Potential">P</th>
-                        <th class="text-end" title="Suitability">S</th>
-                        <th>Passed</th><th>Model</th><th>When</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var s in _scores)
-                    {
+            <div class="card mb-4"><div class="card-body p-0">
+                <table class="table table-sm m-0 mx-1">
+                    <thead>
                         <tr>
-                            <td>@s.Id</td>
-                            <td class="text-end" title="@Dec(s.Novelty)">@Whole(s.Novelty)</td>
-                            <td class="text-end" title="@Dec(s.Coherence)">@Whole(s.Coherence)</td>
-                            <td class="text-end" title="@Dec(s.Potential)">@Whole(s.Potential)</td>
-                            <td class="text-end" title="@Dec(s.Suitability)">@Whole(s.Suitability)</td>
-                            <td>@(s.PassedThreshold ? "✓" : "—")</td>
-                            <td>@s.Model</td>
-                            <td>@s.CreatedAtUtc.ToDisplay()</td>
+                            <th>#</th>
+                            <th class="text-end" title="Novelty">N</th>
+                            <th class="text-end" title="Coherence">C</th>
+                            <th class="text-end" title="Potential">P</th>
+                            <th class="text-end" title="Suitability">S</th>
+                            <th>Passed</th><th>Model</th><th>When</th>
                         </tr>
-                    }
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                        @foreach (var s in _scores)
+                        {
+                            <tr>
+                                <td>@s.Id</td>
+                                <td class="text-end" title="@Dec(s.Novelty)">@Whole(s.Novelty)</td>
+                                <td class="text-end" title="@Dec(s.Coherence)">@Whole(s.Coherence)</td>
+                                <td class="text-end" title="@Dec(s.Potential)">@Whole(s.Potential)</td>
+                                <td class="text-end" title="@Dec(s.Suitability)">@Whole(s.Suitability)</td>
+                                <td>@(s.PassedThreshold ? "✓" : "—")</td>
+                                <td class="sf-mono">@s.Model</td>
+                                <td>@s.CreatedAtUtc.ToDisplay()</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div></div>
 
-            <h3>Concept Versions</h3>
+            @* concept versions *@
+            <div class="d-flex align-items-center gap-2 mb-2">
+                <h3 class="h5 m-0">Concept Versions</h3>
+                <span class="sf-mono" style="font-size:.72rem;color:var(--sf-faint);">@(_concepts.Count == 0 ? "none yet" : $"{_concepts.Count} version{(_concepts.Count == 1 ? "" : "s")}")</span>
+            </div>
             @if (_concepts.Count == 0)
             {
-                <p><em>No concepts built for this idea yet.</em></p>
+                <div class="card mb-4"><div class="card-body text-center" style="padding:1.8rem;color:var(--sf-muted);border:1px dashed var(--sf-border);border-radius:14px;">
+                    <i class="bi bi-book" style="font-size:1.4rem;color:var(--sf-faint);display:block;margin-bottom:.5rem;"></i>
+                    No concepts built for this idea yet.
+                </div></div>
             }
             @foreach (var c in _concepts)
             {
-                <div class="card mb-2 @(c.IsStale ? "border-warning" : "")">
+                <div class="card mb-3 @(c.IsStale ? "border-warning" : "")">
                     <div class="card-body">
-                        <h5 class="card-title">
-                            @c.Title
+                        <div class="d-flex align-items-center gap-2 flex-wrap mb-3">
+                            <span class="sf-mono" style="font-size:.72rem;color:var(--sf-faint);">#@c.Id</span>
+                            <span class="card-title m-0" style="font-size:1.2rem;font-weight:600;">@c.Title</span>
                             @if (c.IsActive)
                             {
                                 <span class="badge bg-success">active</span>
                             }
                             @if (c.IsStale)
                             {
-                                <span class="badge bg-warning text-dark">stale</span>
+                                <span class="badge bg-warning">stale</span>
                             }
-                        </h5>
+                            <span class="sf-mono ms-auto" style="font-size:.72rem;color:var(--sf-faint);">@c.Model · @c.CreatedAtUtc.ToDisplay()</span>
+                        </div>
                         <div class="card-text">@RenderConceptFields(c)</div>
                     </div>
                 </div>
@@ -153,16 +206,16 @@
 
             @if (_concepts.Count >= 2)
             {
-                <h3>Compare Versions</h3>
-                <div class="d-flex gap-2 mb-2">
-                    <select class="form-select w-auto" @bind="_compareAId">
+                <h3 class="h5 mb-2">Compare Versions</h3>
+                <div class="d-flex gap-2 mb-3">
+                    <select class="form-select form-select-sm w-auto" @bind="_compareAId">
                         <option value="">version A…</option>
                         @foreach (var c in _concepts)
                         {
                             <option value="@c.Id">#@c.Id @c.Title</option>
                         }
                     </select>
-                    <select class="form-select w-auto" @bind="_compareBId">
+                    <select class="form-select form-select-sm w-auto" @bind="_compareBId">
                         <option value="">version B…</option>
                         @foreach (var c in _concepts)
                         {
@@ -172,42 +225,51 @@
                 </div>
                 @if (CompareA is not null && CompareB is not null)
                 {
-                    <div class="row">
+                    <div class="row mb-4">
                         <div class="col-md-6">@RenderConceptDetail(CompareA)</div>
                         <div class="col-md-6">@RenderConceptDetail(CompareB)</div>
                     </div>
                 }
             }
 
-            <h3>Stored Calls (Replay)</h3>
+            @* stored calls *@
+            <div class="d-flex align-items-center gap-2 mb-2">
+                <h3 class="h5 m-0">Stored Calls</h3>
+                <span class="sf-mono" style="font-size:.72rem;color:var(--sf-faint);">replay to A/B a config</span>
+            </div>
             @if (_calls.Count == 0)
             {
                 <p><em>No stored calls for this idea.</em></p>
             }
-            <table class="table table-sm">
-                <thead>
-                    <tr><th>#</th><th>Stage</th><th>Slot</th><th>Model</th><th>Action</th></tr>
-                </thead>
-                <tbody>
-                    @foreach (var call in _calls)
-                    {
-                        <tr>
-                            <td>@call.Id</td>
-                            <td>@call.Stage</td>
-                            <td>@call.Slot</td>
-                            <td>@call.Model</td>
-                            <td>
-                                <button class="btn btn-outline-primary btn-sm me-1" disabled="@_busy"
-                                        @onclick="() => ReplayAsync(call.Id, call.Slot)">
-                                    @(_busy && _action == "replay" && _replayingId == call.Id ? "Replaying…" : "Replay vs Profile")
-                                </button>
-                                <a class="btn btn-outline-secondary btn-sm" href="@($"replay?logId={call.Id}")">Open in Replay</a>
-                            </td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
-            <p class="small text-muted">
+            else
+            {
+                <div class="card mb-3"><div class="card-body p-0">
+                    <table class="table table-sm m-0 mx-1">
+                        <thead>
+                            <tr><th>#</th><th>Stage</th><th>Slot</th><th>Model</th><th>Action</th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var call in _calls)
+                            {
+                                <tr>
+                                    <td class="sf-mono">@call.Id</td>
+                                    <td>@call.Stage</td>
+                                    <td class="sf-mono">@call.Slot</td>
+                                    <td class="sf-mono">@call.Model</td>
+                                    <td>
+                                        <button class="btn btn-outline-primary btn-sm me-1" disabled="@_busy"
+                                                @onclick="() => ReplayAsync(call.Id, call.Slot)">
+                                            <i class="bi bi-arrow-left-right me-1"></i>@(_busy && _action == "replay" && _replayingId == call.Id ? "Replaying…" : "Replay vs Profile")
+                                        </button>
+                                        <a class="btn btn-outline-secondary btn-sm" href="@($"replay?logId={call.Id}")">Open in Replay</a>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div></div>
+            }
+            <p class="small" style="color:var(--sf-muted);">
                 <strong>Replay vs Profile</strong> re-runs a stored call using the selected Profile override above
                 (or the active profile when none is chosen) and shows the original and new responses side by side —
                 an A/B check of how a different model/config would answer. It never changes saved data.
@@ -215,15 +277,15 @@
 
             @if (_replayResult is not null)
             {
-                <h3>Replay A/B</h3>
+                <h3 class="h5 mt-4 mb-2">Replay A/B</h3>
                 <div class="row">
                     <div class="col-md-6">
                         <h5>Original (@_replayResult.OriginalModel)</h5>
-                        <pre class="border p-2">@_replayResult.OriginalResponse</pre>
+                        <pre class="border p-2" style="background:var(--sf-surface-2);border-color:var(--sf-border) !important;border-radius:8px;color:var(--sf-ink);white-space:pre-wrap;">@_replayResult.OriginalResponse</pre>
                     </div>
                     <div class="col-md-6">
                         <h5>Replay (@_replayResult.NewModel)</h5>
-                        <pre class="border p-2">@_replayResult.NewResponse</pre>
+                        <pre class="border p-2" style="background:var(--sf-surface-2);border-color:var(--sf-border) !important;border-radius:8px;color:var(--sf-ink);white-space:pre-wrap;">@_replayResult.NewResponse</pre>
                     </div>
                 </div>
             }
@@ -231,17 +293,58 @@
     </div>
 </div>
 
+@* Two-column layout with a sticky idea list. Collapses to one column on narrow screens.
+   Selected / hover states for the idea cards live here (scoped to this page). *@
+<style>
+    .concepts-grid {
+        display: grid;
+        grid-template-columns: 352px 1fr;
+        gap: 22px;
+        align-items: start;
+    }
+    .concepts-list { position: sticky; top: 82px; }
+
+    .concept-idea {
+        background: var(--sf-surface);
+        border: 1px solid var(--sf-border);
+        border-radius: 12px;
+        padding: 12px 14px;
+        cursor: pointer;
+        transition: border-color .15s ease, background-color .15s ease;
+    }
+    .concept-idea:hover { border-color: rgba(var(--sf-accent-rgb), .45); }
+    .concept-idea.is-selected {
+        background: rgba(var(--sf-accent-rgb), .13);
+        border-color: rgba(var(--sf-accent-rgb), .45);
+    }
+    .concept-idea:disabled { opacity: .6; cursor: default; }
+
+    @@media (max-width: 991.98px) {
+        .concepts-grid { grid-template-columns: 1fr; }
+        .concepts-list { position: static; }
+    }
+</style>
+
 @code {
     private List<Idea> _ideas = new();                       // ideas whose latest score passed
     private HashSet<int> _conceptIdeaIds = new();            // idea ids that have at least one concept
     private bool _onlyWithConcept;                           // "Has A Concept" filter
+    // Decision filter (mirrors /ideas): defaults to Keep only — this page is about developing what made the cut.
+    private readonly HashSet<IdeaDisposition> _dispositionFilter = new() { IdeaDisposition.Keep };
     private List<ConfigProfile> _profiles = new();
     private int? _selectedIdeaId;
     private string? _profileId; // bound as string from the <select>
 
-    // The left-column list, optionally narrowed to ideas that already have a concept.
+    // The left-column list, narrowed by the Decision checkboxes and optionally to ideas that already have a concept.
     private IReadOnlyList<Idea> DisplayedIdeas =>
-        _onlyWithConcept ? _ideas.Where(i => _conceptIdeaIds.Contains(i.Id)).ToList() : _ideas;
+        _ideas.Where(i => _dispositionFilter.Contains(i.Disposition)
+                          && (!_onlyWithConcept || _conceptIdeaIds.Contains(i.Id))).ToList();
+
+    private void ToggleDispositionFilter(IdeaDisposition disposition, bool isChecked)
+    {
+        if (isChecked) _dispositionFilter.Add(disposition);
+        else _dispositionFilter.Remove(disposition);
+    }
 
     private List<IdeaScore> _scores = new();
     private List<Concept> _concepts = new();
@@ -264,6 +367,18 @@
     private int? _replayingId;
     private string? _error;
 
+    // Disposition pill styling, driven by the shared --sf-* tokens (both themes).
+    private static string DispPill(IdeaDisposition d)
+    {
+        const string b = "font-size:.6rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:2px 8px;border-radius:20px;";
+        return d switch
+        {
+            IdeaDisposition.Keep => b + "background:rgba(var(--sf-sage-rgb),.18);color:var(--sf-sage);",
+            IdeaDisposition.Skip => b + "background:rgba(var(--sf-amber-rgb),.16);color:var(--sf-amber);",
+            _ => b + "background:var(--sf-surface-2);color:var(--sf-muted);",
+        };
+    }
+
     protected override async Task OnInitializedAsync()
     {
         _profiles = await Profiles.ListAsync();
@@ -271,8 +386,9 @@
     }
 
     /// <summary>
-    /// Loads the 50 most recent ideas whose <em>latest</em> score passed, plus the set of idea ids that have a
-    /// concept (for the book marker and the "Has A Concept" filter). Latest-score-per-idea is resolved in memory
+    /// Loads the 50 most recent ideas whose <em>latest</em> score passed OR that the user marked Keep (a kept idea
+    /// gets a concept even when its score failed, so it must be browsable here), plus the set of idea ids that have
+    /// a concept (for the book marker and the "Has A Concept" filter). Latest-score-per-idea is resolved in memory
     /// because EF/SQLite won't translate the GroupBy+First shape (mirrors BrowseQueries).
     /// </summary>
     private async Task LoadIdeaListAsync()
@@ -282,8 +398,14 @@
             .ToDictionary(g => g.Key, g => g.OrderByDescending(s => s.Id).First().PassedThreshold);
         var passingIds = latestPass.Where(kv => kv.Value).Select(kv => kv.Key).ToHashSet();
 
+        var keptIds = (await Db.Ideas
+            .Where(i => i.Disposition == IdeaDisposition.Keep)
+            .Select(i => i.Id)
+            .ToListAsync()).ToHashSet();
+        var eligible = passingIds.Union(keptIds).ToHashSet();
+
         _ideas = await Db.Ideas
-            .Where(i => passingIds.Contains(i.Id))
+            .Where(i => eligible.Contains(i.Id))
             .OrderByDescending(i => i.Id)
             .Take(50)
             .ToListAsync();
@@ -404,7 +526,7 @@
                     }
                     @if (c.IsStale)
                     {
-                        <span class="badge bg-warning text-dark">stale</span>
+                        <span class="badge bg-warning">stale</span>
                     }
                 </h5>
                 <div class="card-text">@RenderConceptFields(c)</div>
@@ -417,25 +539,25 @@
     private RenderFragment RenderConceptFields(Concept c) => __builder =>
     {
         <div class="mb-3">
-            <strong>Genre</strong><br />
+            <div style="font-size:.62rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--sf-accent);margin-bottom:.25rem;">Genre</div>
             @c.Genre
         </div>
         <div class="mb-3">
-            <strong>Theme</strong><br />
+            <div style="font-size:.62rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--sf-accent);margin-bottom:.25rem;">Theme</div>
             @c.Theme
         </div>
         <div class="mb-3">
-            <strong>Hook</strong><br />
+            <div style="font-size:.62rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--sf-accent);margin-bottom:.25rem;">Hook</div>
             @c.Hook
         </div>
         <div class="mb-3">
-            <strong>Conflict</strong><br />
+            <div style="font-size:.62rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--sf-accent);margin-bottom:.25rem;">Conflict</div>
             @c.Conflict
         </div>
         <div class="mb-3">
-            <strong>Central Story Question</strong><br />
+            <div style="font-size:.62rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--sf-accent);margin-bottom:.25rem;">Central Story Question</div>
             @c.CentralStoryQuestion
         </div>
-        <small class="text-muted">Model: @c.Model · @c.CreatedAtUtc.ToDisplay()</small>
+        <small style="color:var(--sf-faint);">Model: @c.Model · @c.CreatedAtUtc.ToDisplay()</small>
     };
 }

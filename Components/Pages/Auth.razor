@@ -6,8 +6,8 @@
 
 <PageTitle>Auth</PageTitle>
 
-<h1>You are authenticated</h1>
-
-<AuthorizeView>
-    Hello @context.User.Identity?.Name!
-</AuthorizeView>
+<PageHeader Eyebrow="System" Icon="bi-lock" Title="You are authenticated">
+    <AuthorizeView>
+        Hello @context.User.Identity?.Name!
+    </AuthorizeView>
+</PageHeader>

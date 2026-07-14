@@ -1,12 +1,22 @@
 @page "/ideas"
 @rendermode InteractiveServer
+@using SeedForge.Domain
 @using SeedForge.Features.Browse
+@using SeedForge.Features.Disposition
 @inject BrowseQueries Browse
+@inject SetIdeaDispositionHandler Disposer
 
 <PageTitle>Ideas</PageTitle>
 
-<h1>Ideas</h1>
-<p>Every extracted idea, with its source video, latest score, pass/fail, and creation date. Click a row to open its full version history in the Concept Browser. Score columns are abbreviated: N = Novelty (freshness of the idea), C = Coherence (internal logical consistency), P = Potential (richness as science fiction), S = Suitability (suitability for a developed story), and M = Mean (the average of the four, shown green when the idea passes and red when it doesn't).</p>
+<PageHeader Eyebrow="Library" Icon="bi-lightbulb" Title="Ideas">
+    Every extracted idea, with its source video, latest score, pass/fail, and creation date. Click a row
+    to open its full version history in the Concept Browser. Score columns are abbreviated: N = Novelty
+    (freshness of the idea), C = Coherence (internal logical consistency), P = Potential (richness as
+    science fiction), S = Suitability (suitability for a developed story), and M = Mean (the average of
+    the four, shown green when the idea passes and red when it doesn't). The score is only a signal —
+    <strong>Keep</strong> and <strong>Skip</strong> are your call: a concept is built only when you mark
+    an idea Keep (even one that failed scoring), and a skipped idea is never developed.
+</PageHeader>
 
 @if (_error is not null)
 {
@@ -23,8 +33,21 @@ else if (_rows.Count == 0)
 }
 else
 {
-    <p class="text-muted">@_rows.Count idea@(_rows.Count == 1 ? "" : "s").</p>
-    <table class="table table-sm table-hover align-middle">
+    <div class="d-flex align-items-center gap-3 mb-2">
+        <span class="col-form-label">Decision:</span>
+        @foreach (var d in new[] { IdeaDisposition.Undecided, IdeaDisposition.Keep, IdeaDisposition.Skip })
+        {
+            <div class="form-check form-check-inline">
+                <input class="form-check-input" type="checkbox" id="filter-@d"
+                       checked="@_filter.Contains(d)"
+                       @onchange="e => ToggleFilter(d, (bool)e.Value!)" />
+                <label class="form-check-label" for="filter-@d">@d</label>
+            </div>
+        }
+        <span class="sf-mono" style="font-size:.72rem;color:var(--sf-faint);">@Filtered.Count idea@(Filtered.Count == 1 ? "" : "s")</span>
+    </div>
+    <div class="card mb-3"><div class="card-body p-0">
+    <table class="table table-sm table-hover align-middle m-0 mx-1">
         <thead>
             <tr>
                 <th>Idea</th>
@@ -34,11 +57,13 @@ else
                 <th class="text-end">P</th>
                 <th class="text-end">S</th>
                 <th class="text-end">M</th>
+                <th>Decision</th>
                 <th>Created</th>
+                <th></th>
             </tr>
         </thead>
         <tbody>
-            @foreach (var r in _rows)
+            @foreach (var r in Filtered)
             {
                 <tr style="cursor:pointer" @onclick="() => OpenConcepts(r.Id)">
                     <td title="@r.Premise">@Truncate(r.Premise, 160)</td>
@@ -59,19 +84,43 @@ else
                     <td class="text-end" title="@Dec(r.Mean)">
                         <span class="badge @MeanBadgeClass(r.Passed)">@Whole(r.Mean)</span>
                     </td>
+                    <td>
+                        <span class="badge @DispositionBadgeClass(r.Disposition)">@r.Disposition</span>
+                    </td>
                     <td><small class="text-muted">@r.CreatedAtUtc.ToString("MM/dd/yyyy")</small></td>
+                    <td class="text-nowrap" @onclick:stopPropagation="true">
+                        <button class="btn btn-sm btn-outline-success"
+                                disabled="@(_busy || r.Disposition == IdeaDisposition.Keep)"
+                                @onclick="() => SetDispositionAsync(r.Id, IdeaDisposition.Keep)">Keep</button>
+                        <button class="btn btn-sm btn-outline-secondary"
+                                disabled="@(_busy || r.Disposition == IdeaDisposition.Skip)"
+                                @onclick="() => SetDispositionAsync(r.Id, IdeaDisposition.Skip)">Skip</button>
+                    </td>
                 </tr>
             }
         </tbody>
     </table>
+    </div></div>
 }
 
 @code {
     private IReadOnlyList<IdeaRow> _rows = Array.Empty<IdeaRow>();
     private bool _busy = true;
     private string? _error;
+    // Default to the triage queue only: decided ideas (Keep or Skip) are hidden until their box is ticked.
+    private readonly HashSet<IdeaDisposition> _filter = new() { IdeaDisposition.Undecided };
 
     [Inject] private NavigationManager Nav { get; set; } = default!;
+
+    // In-memory shaping, consistent with the rest of the page (single-user data volume is small).
+    private IReadOnlyList<IdeaRow> Filtered =>
+        _rows.Where(r => _filter.Contains(r.Disposition)).ToList();
+
+    private void ToggleFilter(IdeaDisposition disposition, bool isChecked)
+    {
+        if (isChecked) _filter.Add(disposition);
+        else _filter.Remove(disposition);
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -91,6 +140,26 @@ else
 
     private void OpenConcepts(int ideaId) => Nav.NavigateTo($"/concepts?ideaId={ideaId}");
 
+    // Keep enqueues the concept build (idempotently, inside the handler); Skip cancels pending builds.
+    private async Task SetDispositionAsync(int ideaId, IdeaDisposition disposition)
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            await Disposer.HandleAsync(new SetIdeaDispositionRequest(ideaId, disposition), default);
+            _rows = await Browse.IdeaRowsAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to mark idea {ideaId} {disposition}: {ex.Message}";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
     // Scores are stored 0–1; show a whole number on a 0–10 scale (truncated), with the 1-decimal value on hover.
     // The +1e-9 nudge counters binary-float underestimation (e.g. 0.3 → 2.999… → 3, not 2).
     private static string Whole(double? value) => value is null ? "—" : ((int)(value.Value * 10 + 1e-9)).ToString();
@@ -102,6 +171,15 @@ else
         true => "bg-success",
         false => "bg-danger",
         null => "bg-secondary",
+    };
+
+    // Manual-verdict badge: green once kept, neutral grey when skipped (red already means "failed score" here),
+    // and a light chip while the decision is still the user's to make.
+    private static string DispositionBadgeClass(IdeaDisposition disposition) => disposition switch
+    {
+        IdeaDisposition.Keep => "bg-success",
+        IdeaDisposition.Skip => "bg-secondary",
+        _ => "bg-light text-dark",
     };
 
     private static string Truncate(string text, int max) =>

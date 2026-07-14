@@ -2,6 +2,7 @@ using SeedForge.Features.Browse;
 using SeedForge.Features.Concepts;
 using SeedForge.Features.Config;
 using SeedForge.Features.Discovery;
+using SeedForge.Features.Disposition;
 using SeedForge.Features.Extraction;
 using SeedForge.Features.Ingestion;
 using SeedForge.Features.Maintenance;
@@ -37,6 +38,7 @@ namespace SeedForge.Features
             services.AddScoped<FailoverSettingsService>();
             services.AddScoped<RegenerateConceptHandler>();
             services.AddScoped<RescoreIdeaHandler>();
+            services.AddScoped<SetIdeaDispositionHandler>();
             services.AddScoped<ReplayCallHandler>();
 
             // Cost & token dashboard (Phase 7): read-only aggregation over AiCallLog + Transcript.

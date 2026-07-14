@@ -12,32 +12,106 @@
 
 @if (_loaded)
 {
+    @* ---- page header ---- *@
+    <div class="d-flex align-items-end justify-content-between flex-wrap gap-3 mb-2">
+        <div>
+            <div style="display:flex;align-items:center;gap:9px;color:var(--sf-faint);font-size:.7rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;margin-bottom:10px;">
+                <span style="width:7px;height:7px;border-radius:50%;background:var(--sf-sage);box-shadow:0 0 0 3px rgba(var(--sf-sage-rgb),.22);"></span>
+                Pipeline live
+            </div>
+            <h1 style="font-size:2.4rem;margin:0;line-height:1;">Overview</h1>
+        </div>
+        <div style="text-align:right;color:var(--sf-muted);font-size:.8rem;line-height:1.5;">
+            <div style="color:var(--sf-ink);font-weight:600;">@DateTime.Now.ToString("ddd, MMM d")</div>
+            <div class="sf-mono" style="font-size:.72rem;color:var(--sf-faint);">last poll @DateTime.UtcNow.ToString("HH:mm") UTC</div>
+        </div>
+    </div>
+
+    <p style="color:var(--sf-muted);font-size:.95rem;max-width:60ch;margin:0 0 1.8rem;line-height:1.6;">
+        Channels are polled for uploads, transcripts mined into ideas, scored, and the survivors forged into
+        story concepts. Here's where everything stands.
+    </p>
+
+    @* ---- stat cards ---- *@
     <div class="row g-3 mb-4">
         <div class="col-md-3">
-            <div class="card text-center"><div class="card-body">
-                <h6 class="text-muted">Channels Followed</h6><h3>@_channels</h3>
+            <div class="card h-100"><div class="card-body text-center">
+                <div style="font-size:.7rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--sf-muted);margin-bottom:.6rem;">Channels Followed</div>
+                <div style="font-family:var(--sf-serif);font-size:2.2rem;font-weight:500;line-height:1;letter-spacing:-.02em;">@_channels</div>
                 <a href="channels" class="stretched-link"></a>
             </div></div>
         </div>
         <div class="col-md-3">
-            <div class="card text-center"><div class="card-body">
-                <h6 class="text-muted">Videos Pending</h6><h3>@_pendingVideos</h3>
+            <div class="card h-100"><div class="card-body text-center">
+                <div style="font-size:.7rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--sf-muted);margin-bottom:.6rem;">Videos Pending</div>
+                <div style="font-family:var(--sf-serif);font-size:2.2rem;font-weight:500;line-height:1;letter-spacing:-.02em;">@_pendingVideos</div>
                 <a href="queues" class="stretched-link"></a>
             </div></div>
         </div>
         <div class="col-md-3">
-            <div class="card text-center"><div class="card-body">
-                <h6 class="text-muted">Concept Jobs Pending</h6><h3>@_pendingConcepts</h3>
+            <div class="card h-100"><div class="card-body text-center">
+                <div style="font-size:.7rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--sf-muted);margin-bottom:.6rem;">Concept Jobs Pending</div>
+                <div style="font-family:var(--sf-serif);font-size:2.2rem;font-weight:500;line-height:1;letter-spacing:-.02em;">@_pendingConcepts</div>
                 <a href="queues" class="stretched-link"></a>
             </div></div>
         </div>
         <div class="col-md-3">
-            <div class="card text-center"><div class="card-body">
-                <h6 class="text-muted">Active/Stale Concepts</h6><h3>@_activeConcepts/@_staleConcepts</h3>
+            <div class="card h-100"><div class="card-body text-center">
+                <div style="font-size:.7rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--sf-muted);margin-bottom:.6rem;">Active / Stale Concepts</div>
+                <div style="font-family:var(--sf-serif);font-size:2.2rem;font-weight:500;line-height:1;letter-spacing:-.02em;">@_activeConcepts<span style="font-size:1.3rem;color:var(--sf-faint);font-weight:400;"> / @_staleConcepts</span></div>
                 <a href="concepts" class="stretched-link"></a>
             </div></div>
         </div>
     </div>
+
+    @* ---- recent concepts ---- *@
+    <div class="d-flex align-items-baseline justify-content-between mb-3">
+        <h2 class="h4 m-0">Recent concepts</h2>
+        <a href="concepts" class="d-inline-flex align-items-center gap-1 text-decoration-none" style="font-size:.8rem;font-weight:600;color:var(--sf-accent);">
+            Concept browser <i class="bi bi-arrow-right" style="font-size:.75rem;"></i>
+        </a>
+    </div>
+
+    @if (_recentConcepts.Count == 0)
+    {
+        <p class="text-muted"><em>No concepts yet.</em></p>
+    }
+    @foreach (var c in _recentConcepts)
+    {
+        <div class="card mb-2 @(c.IsStale ? "border-warning" : "")">
+            <div class="card-body">
+                <div class="d-flex align-items-start justify-content-between gap-3">
+                    <div style="min-width:0;">
+                        <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
+                            <span class="card-title m-0" style="font-size:1.15rem;font-weight:600;">@c.Title</span>
+                            @if (c.IsActive)
+                            {
+                                <span class="badge bg-success">active</span>
+                            }
+                            @if (c.IsStale)
+                            {
+                                <span class="badge bg-warning">stale</span>
+                            }
+                        </div>
+                        <div style="color:var(--sf-muted);font-size:.9rem;line-height:1.55;">@c.Hook</div>
+                        <div class="d-flex align-items-center gap-3 mt-2" style="color:var(--sf-faint);font-size:.72rem;">
+                            <span class="d-inline-flex align-items-center gap-1"><i class="bi bi-bookmark"></i>@c.Genre</span>
+                            <span class="sf-mono">@c.Model</span>
+                            <span class="d-inline-flex align-items-center gap-1"><i class="bi bi-clock"></i>@c.CreatedAtUtc.ToDisplay()</span>
+                        </div>
+                    </div>
+                    @if (MeanFor(c) is string mean)
+                    {
+                        <div class="text-end flex-shrink-0">
+                            <div style="font-family:var(--sf-serif);font-size:1.4rem;font-weight:600;color:var(--sf-accent);line-height:1;">@mean</div>
+                            <div style="font-size:.6rem;color:var(--sf-faint);letter-spacing:.08em;text-transform:uppercase;margin-top:.25rem;">mean</div>
+                        </div>
+                    }
+                </div>
+                <a href="concepts" class="stretched-link"></a>
+            </div>
+        </div>
+    }
 }
 else
 {
@@ -51,6 +125,8 @@ else
     private int _activeConcepts;
     private int _staleConcepts;
     private int _channels;
+    private List<Concept> _recentConcepts = new();
+    private readonly Dictionary<int, string> _means = new(); // concept.Id -> mean score, one decimal (0–10)
 
     protected override async Task OnInitializedAsync()
     {
@@ -59,6 +135,31 @@ else
         _activeConcepts = await Db.Concepts.CountAsync(c => c.IsActive);
         _staleConcepts = await Db.Concepts.CountAsync(c => c.IsActive && c.IsStale);
         _channels = await Db.Channels.CountAsync();
+        _recentConcepts = await Db.Concepts.OrderByDescending(c => c.Id).Take(5).ToListAsync();
+
+        // Mean of the source IdeaScore's four axes (0–1 → 0–10), shown on each row when available.
+        var scoreIds = _recentConcepts
+            .Where(c => c.IdeaScoreId != null)
+            .Select(c => c.IdeaScoreId!.Value)
+            .Distinct()
+            .ToList();
+        if (scoreIds.Count > 0)
+        {
+            var scoreMap = await Db.IdeaScores
+                .Where(s => scoreIds.Contains(s.Id))
+                .ToDictionaryAsync(s => s.Id);
+            foreach (var c in _recentConcepts)
+            {
+                if (c.IdeaScoreId is int sid && scoreMap.TryGetValue(sid, out var s))
+                {
+                    var mean = (s.Novelty + s.Coherence + s.Potential + s.Suitability) / 4.0 * 10.0;
+                    _means[c.Id] = mean.ToString("0.0");
+                }
+            }
+        }
+
         _loaded = true;
     }
+
+    private string? MeanFor(Concept c) => _means.TryGetValue(c.Id, out var m) ? m : null;
 }

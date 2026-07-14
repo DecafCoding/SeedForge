@@ -8,6 +8,9 @@
     <ResourcePreloader />
     <link rel="stylesheet" href="@Assets["lib/bootstrap/dist/css/bootstrap.min.css"]" />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.1/font/bootstrap-icons.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="@Assets["app.css"]" />
     <link rel="stylesheet" href="@Assets["SeedForge.styles.css"]" />
     <ImportMap />
@@ -40,16 +43,18 @@
                 html.setAttribute('data-bs-theme', theme);
                 html.classList.remove('theme-light', 'theme-dark');
                 html.classList.add('theme-' + theme);
+                document.querySelectorAll('.theme-toggle i').forEach(function (i) {
+                    i.className = theme === 'light' ? 'bi bi-sun-fill' : 'bi bi-moon-fill';
+                });
                 window.dispatchEvent(new CustomEvent('themeChanged', { detail: theme }));
             } catch (e) { }
         };
 
-        // Called by ThemeToggle.OnAfterRenderAsync on interactive pages so the icon
-        // stays in sync when the inline onclick path fires the themeChanged event.
-        window.seedforgeRegisterThemeListener = function (dotNetRef) {
-            window.addEventListener('themeChanged', function (e) {
-                dotNetRef.invokeMethodAsync('OnThemeChangedFromJs', e.detail);
-            });
+        // Flip based on the live DOM state — the toggle button renders in the static-SSR
+        // layout, so its markup can't carry per-click state.
+        window.seedforgeToggleTheme = function () {
+            const current = document.documentElement.getAttribute('data-bs-theme');
+            window.seedforgeSetTheme(current === 'light' ? 'dark' : 'light');
         };
 
         // Re-apply theme after Blazor enhanced navigation patches the DOM.

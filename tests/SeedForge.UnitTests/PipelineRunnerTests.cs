@@ -26,7 +26,6 @@ namespace SeedForge.UnitTests
             var ingest = new IngestTranscriptHandler(
                 db, apify ?? FakeApifyIngestionService.NoTranscript("unused00000"),
                 NullLogger<IngestTranscriptHandler>.Instance);
-            var conceptQueue = new ConceptQueue(db, Options.Create(new WorkerOptions()), new WorkerControl(), NullLogger<ConceptQueue>.Instance);
             return new PipelineRunner(
                 db,
                 ingest,
@@ -34,7 +33,6 @@ namespace SeedForge.UnitTests
                 new ExtractIdeasHandler(db, fake, _h.Resolver, NullLogger<ExtractIdeasHandler>.Instance),
                 new ScoreIdeasHandler(db, fake, _h.Resolver, options, NullLogger<ScoreIdeasHandler>.Instance),
                 new BuildConceptHandler(db, fake, _h.Resolver, NullLogger<BuildConceptHandler>.Instance),
-                conceptQueue,
                 NullLogger<PipelineRunner>.Instance);
         }
 
@@ -83,6 +81,12 @@ namespace SeedForge.UnitTests
             var concept = read.Concepts.Single(c => c.Id == result.ConceptIds[0]);
             Assert.True(concept.IsActive);
             Assert.Equal(result.SurvivorIds[0], concept.IdeaId);
+
+            // The inline path records the built survivor as Keep (running the manual page IS the decision);
+            // the culled idea stays Undecided.
+            Assert.Equal(IdeaDisposition.Keep, read.Ideas.Single(i => i.Id == result.SurvivorIds[0]).Disposition);
+            Assert.All(read.Ideas.Where(i => result.IdeaIds.Contains(i.Id) && i.Id != result.SurvivorIds[0]),
+                i => Assert.Equal(IdeaDisposition.Undecided, i.Disposition));
 
             // Every AI call shares the one correlation id, and the run's derivatives carry it.
             Assert.All(fake.Contexts, c => Assert.Equal(result.CorrelationId, c.CorrelationId));
@@ -152,13 +156,13 @@ namespace SeedForge.UnitTests
         }
 
         [Fact]
-        public async Task ProcessVideoJobAsync_stops_at_scoring_and_enqueues_one_job_per_survivor()
+        public async Task ProcessVideoJobAsync_survivors_wait_Undecided_with_no_jobs_enqueued()
         {
             const string transcriptText = "First we cover terraforming Mars over generations. " +
                                           "Then we explore a rogue AI that runs a starship alone.";
             var apify = FakeApifyIngestionService.WithTranscript("abc12345678", transcriptText, title: "Real Video");
 
-            // Two ideas, both survive scoring ⇒ two enqueued ConceptJobs, zero concepts built.
+            // Two ideas, both survive scoring ⇒ both wait Undecided; nothing enqueued, nothing built.
             var fake = new FakeLlmClient()
                 .SetStructured(new SegmentationResponse(new()
                 {
@@ -180,13 +184,11 @@ namespace SeedForge.UnitTests
 
             Assert.Equal(VideoJobStatus.Done, result.Status);
             Assert.Equal(2, result.SurvivorIds.Count);
-            Assert.Equal(2, result.EnqueuedConceptJobIds.Count);
 
             using var read = _h.NewDb();
-            var jobs = read.ConceptJobs.Where(j => result.EnqueuedConceptJobIds.Contains(j.Id)).ToList();
-            Assert.Equal(2, jobs.Count);
-            Assert.All(jobs, j => Assert.Equal(ConceptTrigger.Auto, j.Trigger));
-            Assert.All(jobs, j => Assert.Equal(ConceptJobStatus.Pending, j.Status));
+            Assert.Empty(read.ConceptJobs); // enqueues nothing — survivors await the user's Keep decision
+            Assert.All(read.Ideas.Where(i => result.SurvivorIds.Contains(i.Id)),
+                i => Assert.Equal(IdeaDisposition.Undecided, i.Disposition));
             Assert.Empty(read.Concepts); // builds nothing
         }
 
@@ -219,7 +221,6 @@ namespace SeedForge.UnitTests
 
             Assert.Equal(VideoJobStatus.ProcessedNoIdeas, result.Status);
             Assert.Empty(result.SurvivorIds);
-            Assert.Empty(result.EnqueuedConceptJobIds);
 
             using var read = _h.NewDb();
             Assert.Empty(read.ConceptJobs);

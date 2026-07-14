@@ -15,7 +15,7 @@ using SeedForge.Workers;
 
 namespace SeedForge.UnitTests
 {
-    /// <summary>The Processing worker's extracted iteration: a claimed video drains to enqueued ConceptJobs, and a thrown error reschedules with backoff.</summary>
+    /// <summary>The Processing worker's extracted iteration: a claimed video drains to Undecided survivors awaiting the user's Keep, and a thrown error reschedules with backoff.</summary>
     public class ProcessingWorkerTests : IDisposable
     {
         private readonly SliceTestHarness _h = new();
@@ -27,7 +27,6 @@ namespace SeedForge.UnitTests
             var pipelineOptions = Options.Create(new PipelineOptions { ScoreThreshold = 0.6 });
             var ingest = new IngestTranscriptHandler(db, apify, NullLogger<IngestTranscriptHandler>.Instance);
             var queue = new VideoQueue(db, Options.Create(_opts), new WorkerControl(), NullLogger<VideoQueue>.Instance);
-            var conceptQueue = new ConceptQueue(db, Options.Create(_opts), new WorkerControl(), NullLogger<ConceptQueue>.Instance);
             var pipeline = new PipelineRunner(
                 db,
                 ingest,
@@ -35,14 +34,13 @@ namespace SeedForge.UnitTests
                 new ExtractIdeasHandler(db, fake, _h.Resolver, NullLogger<ExtractIdeasHandler>.Instance),
                 new ScoreIdeasHandler(db, fake, _h.Resolver, pipelineOptions, NullLogger<ScoreIdeasHandler>.Instance),
                 new BuildConceptHandler(db, fake, _h.Resolver, NullLogger<BuildConceptHandler>.Instance),
-                conceptQueue,
                 NullLogger<PipelineRunner>.Instance);
             var iteration = new ProcessingIteration(queue, pipeline, NullLogger<ProcessingIteration>.Instance);
             return (iteration, queue);
         }
 
         [Fact]
-        public async Task ProcessOnceAsync_drains_a_pending_video_into_enqueued_concept_jobs()
+        public async Task ProcessOnceAsync_drains_a_pending_video_into_Undecided_survivors()
         {
             const string text = "First we cover terraforming Mars over generations. " +
                                 "Then we explore a rogue AI that runs a starship alone.";
@@ -69,7 +67,8 @@ namespace SeedForge.UnitTests
             Assert.Equal(ProcessTickOutcome.Productive, outcome);
             using var read = _h.NewDb();
             Assert.Equal(VideoJobStatus.Done, read.Videos.Single(v => v.Id == videoId).Status);
-            Assert.Equal(2, read.ConceptJobs.Count(j => j.Status == ConceptJobStatus.Pending));
+            Assert.Empty(read.ConceptJobs); // enqueues nothing — survivors await the user's Keep decision
+            Assert.All(read.Ideas, i => Assert.Equal(IdeaDisposition.Undecided, i.Disposition));
             Assert.Empty(read.Concepts); // builds nothing
         }
 

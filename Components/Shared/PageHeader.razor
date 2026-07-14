@@ -1,0 +1,20 @@
+@* Shared editorial page header: uppercase eyebrow (the page's sidebar group + icon),
+   big serif title, and an optional muted intro (ChildContent). Matches the header
+   composition introduced on Home/Concepts; styled entirely by the --sf-* tokens. *@
+<div style="margin-bottom:1.4rem;">
+    <div style="display:flex;align-items:center;gap:9px;color:var(--sf-faint);font-size:.7rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;margin-bottom:9px;">
+        <i class="bi @Icon"></i><span>@Eyebrow</span>
+    </div>
+    <h1 style="font-size:2.15rem;margin:0 0 .5rem;line-height:1;">@Title</h1>
+    @if (ChildContent is not null)
+    {
+        <p style="color:var(--sf-muted);font-size:.95rem;max-width:74ch;margin:0;line-height:1.6;">@ChildContent</p>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Eyebrow { get; set; } = string.Empty;
+    [Parameter, EditorRequired] public string Icon { get; set; } = string.Empty;
+    [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

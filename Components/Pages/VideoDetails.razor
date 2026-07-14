@@ -24,12 +24,18 @@ else if (_v is null)
 }
 else
 {
-    <p class="mb-1"><a href="/videos">← All videos</a></p>
-    <h1>@(string.IsNullOrWhiteSpace(_v.Title) ? _v.Url : _v.Title)</h1>
+    <div style="margin-bottom:1.4rem;">
+        <div style="display:flex;align-items:center;gap:9px;color:var(--sf-faint);font-size:.7rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;margin-bottom:9px;">
+            <i class="bi bi-camera-video"></i><span>Library</span>
+            <span style="letter-spacing:normal;text-transform:none;font-weight:400;">·</span>
+            <a href="/videos" style="letter-spacing:normal;font-weight:600;text-decoration:none;">← All videos</a>
+        </div>
+        <h1 style="font-size:2.15rem;margin:0;line-height:1.15;">@(string.IsNullOrWhiteSpace(_v.Title) ? _v.Url : _v.Title)</h1>
+    </div>
 
     <div class="row">
         <div class="col-md-7">
-            <h2>Identity</h2>
+            <h2 class="h5 mb-2">Identity</h2>
             <dl class="row mb-4">
                 <dt class="col-sm-4">URL</dt>
                 <dd class="col-sm-8"><a href="@_v.Url" target="_blank">@_v.Url</a></dd>
@@ -52,7 +58,7 @@ else
                 }
             </dl>
 
-            <h2>Lifecycle</h2>
+            <h2 class="h5 mb-2">Lifecycle</h2>
             <dl class="row mb-4">
                 <dt class="col-sm-4">Status</dt>
                 <dd class="col-sm-8">@VideoStateLabel(_v.Status)</dd>
@@ -96,7 +102,7 @@ else
                 <img src="@_v.ThumbnailUrl" alt="thumbnail" class="img-fluid rounded mb-3" />
             }
 
-            <h2>Yield</h2>
+            <h2 class="h5 mb-2">Yield</h2>
             <dl class="row">
                 <dt class="col-sm-6">Segments</dt>
                 <dd class="col-sm-6">@_v.SegmentCount</dd>
@@ -113,7 +119,7 @@ else
         </div>
     </div>
 
-    <h2>Transcript</h2>
+    <h2 class="h5 mb-2">Transcript</h2>
     @if (string.IsNullOrWhiteSpace(_v.TranscriptText))
     {
         <p><em>No transcript stored for this video.</em></p>
@@ -133,14 +139,15 @@ else
         </details>
     }
 
-    <h2>Concepts</h2>
+    <h2 class="h5 mb-2">Concepts</h2>
     @if (_v.Concepts.Count == 0)
     {
         <p><em>No concepts built from this video yet.</em></p>
     }
     else
     {
-        <table class="table table-sm table-hover align-middle">
+        <div class="card mb-4"><div class="card-body p-0">
+        <table class="table table-sm table-hover align-middle m-0 mx-1">
             <thead>
                 <tr><th>Title</th><th>Genre</th><th>State</th><th>Model</th><th>Created</th></tr>
             </thead>
@@ -170,16 +177,18 @@ else
                 }
             </tbody>
         </table>
+        </div></div>
     }
 
-    <h2>AI trace</h2>
+    <h2 class="h5 mb-2">AI trace</h2>
     @if (_v.AiCalls.Count == 0)
     {
         <p><em>No AI calls recorded for this video.</em></p>
     }
     else
     {
-        <table class="table table-sm align-middle">
+        <div class="card mb-4"><div class="card-body p-0">
+        <table class="table table-sm align-middle m-0 mx-1">
             <thead>
                 <tr><th>#</th><th>Stage</th><th>Slot</th><th>Model</th><th class="text-end">Tokens</th><th class="text-end">Cost</th><th>Ok</th><th>When</th></tr>
             </thead>
@@ -207,9 +216,9 @@ else
                 </tr>
             </tfoot>
         </table>
+        </div></div>
     }
 
-    <hr />
     <button class="btn btn-outline-secondary" disabled="@_working" @onclick="BackfillMetadataAsync">
         @(_working ? "Working…" : "Backfill Video Metadata")
     </button>

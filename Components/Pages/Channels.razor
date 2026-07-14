@@ -8,8 +8,11 @@
 
 <PageTitle>Channels</PageTitle>
 
-<h1>Channels</h1>
-<p>The discovery library: YouTube channels polled for new uploads. New uploads are enqueued to the processing queue (drained by the Processing worker on <a href="queues">Queues</a>). Use <em>Poll Now</em> for an on-demand poll.</p>
+<PageHeader Eyebrow="Library" Icon="bi-broadcast" Title="Channels">
+    The discovery library: YouTube channels polled for new uploads. New uploads are enqueued to the
+    processing queue (drained by the Processing worker on <a href="queues">Queues</a>).
+    Use <em>Poll Now</em> for an on-demand poll.
+</PageHeader>
 
 @if (_error is not null)
 {
@@ -20,44 +23,49 @@
     <div class="alert alert-success">@_message</div>
 }
 
-<h2>Add a channel</h2>
-<div class="input-group mb-3" style="max-width:40rem">
+<h2 class="h5 mb-2">Add a channel</h2>
+<div class="input-group mb-4" style="max-width:40rem">
     <input class="form-control" placeholder="UC… id, /channel/ URL, or @@handle" @bind="_input" disabled="@_busy" />
     <button class="btn btn-primary" disabled="@(_busy || string.IsNullOrWhiteSpace(_input))" @onclick="AddChannel">
         @(_busy ? "Working…" : "Add Channel")
     </button>
 </div>
 
-<h2>Followed channels (@_channels.Count)</h2>
+<div class="d-flex align-items-center gap-2 mb-2">
+    <h2 class="h5 m-0">Followed channels</h2>
+    <span class="sf-mono" style="font-size:.72rem;color:var(--sf-faint);">@_channels.Count followed</span>
+</div>
 @if (_channels.Count == 0)
 {
     <p class="text-muted">No channels yet. Add one above.</p>
 }
 else
 {
-    <table class="table">
-        <thead>
-            <tr><th>Title</th><th>Channel id</th><th>Videos</th><th>Last polled (UTC)</th><th></th></tr>
-        </thead>
-        <tbody>
-            @foreach (var channel in _channels)
-            {
-                <tr>
-                    <td>@channel.Title</td>
-                    <td><code>@channel.YouTubeChannelId</code></td>
-                    <td>@(_videoCounts.TryGetValue(channel.Id, out var count) ? count : 0)</td>
-                    <td>@channel.LastPolledUtc.ToDisplay()</td>
-                    <td class="text-end">
-                        <button class="btn btn-sm btn-outline-secondary me-2" disabled="@_busy" @onclick="() => PollNow(channel.Id)">Poll Now</button>
-                        <button class="btn btn-sm btn-outline-danger" disabled="@_busy" @onclick="() => Remove(channel.Id)">Remove</button>
-                    </td>
-                </tr>
-            }
-        </tbody>
-    </table>
+    <div class="card mb-3"><div class="card-body p-0">
+        <table class="table m-0 mx-1">
+            <thead>
+                <tr><th>Title</th><th>Channel id</th><th>Videos</th><th>Last polled (UTC)</th><th></th></tr>
+            </thead>
+            <tbody>
+                @foreach (var channel in _channels)
+                {
+                    <tr>
+                        <td>@channel.Title</td>
+                        <td><span class="sf-mono" style="font-size:.82rem;">@channel.YouTubeChannelId</span></td>
+                        <td>@(_videoCounts.TryGetValue(channel.Id, out var count) ? count : 0)</td>
+                        <td>@channel.LastPolledUtc.ToDisplay()</td>
+                        <td class="text-end">
+                            <button class="btn btn-sm btn-outline-secondary me-2" disabled="@_busy" @onclick="() => PollNow(channel.Id)">Poll Now</button>
+                            <button class="btn btn-sm btn-outline-danger" disabled="@_busy" @onclick="() => Remove(channel.Id)">Remove</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div></div>
 }
 
-<button class="btn btn-link" disabled="@_busy" @onclick="RefreshAsync">Refresh</button>
+<button class="btn btn-link px-0" disabled="@_busy" @onclick="RefreshAsync">Refresh</button>
 
 @code {
     private List<Channel> _channels = new();

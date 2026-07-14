@@ -5,8 +5,10 @@
 
 <PageTitle>Tokens &amp; Cost</PageTitle>
 
-<h1>Tokens &amp; Cost</h1>
-<p>Token usage and estimated cost per stage and per provider, plus Apify pay-per-result cost. Local runs report tokens with a cost of 0; a hosted model separates out in the provider view.</p>
+<PageHeader Eyebrow="Overview" Icon="bi-bar-chart" Title="Tokens & Cost">
+    Token usage and estimated cost per stage and per provider, plus Apify pay-per-result cost.
+    Local runs report tokens with a cost of 0; a hosted model separates out in the provider view.
+</PageHeader>
 
 <div class="d-flex align-items-center gap-2 mb-3">
     <label class="form-label mb-0">Window:</label>
@@ -26,80 +28,88 @@
 {
     <div class="row g-3 mb-4">
         <div class="col-md-3">
-            <div class="card text-center"><div class="card-body">
-                <h6 class="text-muted">Calls</h6><h3>@_totals.Calls</h3>
+            <div class="card h-100"><div class="card-body text-center">
+                <div style="font-size:.7rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--sf-muted);margin-bottom:.6rem;">Calls</div>
+                <div style="font-family:var(--sf-serif);font-size:2.2rem;font-weight:500;line-height:1;letter-spacing:-.02em;">@_totals.Calls</div>
             </div></div>
         </div>
         <div class="col-md-3">
-            <div class="card text-center"><div class="card-body">
-                <h6 class="text-muted">Total tokens</h6><h3>@_totals.TotalTokens.ToString("N0")</h3>
+            <div class="card h-100"><div class="card-body text-center">
+                <div style="font-size:.7rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--sf-muted);margin-bottom:.6rem;">Total Tokens</div>
+                <div style="font-family:var(--sf-serif);font-size:2.2rem;font-weight:500;line-height:1;letter-spacing:-.02em;">@_totals.TotalTokens.ToString("N0")</div>
             </div></div>
         </div>
         <div class="col-md-3">
-            <div class="card text-center"><div class="card-body">
-                <h6 class="text-muted">Estimated cost</h6><h3>@_totals.EstimatedCost.ToString("C4")</h3>
+            <div class="card h-100"><div class="card-body text-center">
+                <div style="font-size:.7rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--sf-muted);margin-bottom:.6rem;">Estimated Cost</div>
+                <div style="font-family:var(--sf-serif);font-size:2.2rem;font-weight:500;line-height:1;letter-spacing:-.02em;">@_totals.EstimatedCost.ToString("C4")</div>
             </div></div>
         </div>
         <div class="col-md-3">
-            <div class="card text-center"><div class="card-body">
-                <h6 class="text-muted">Apify Cost</h6><h3>@_apifyUsd.ToString("C4")</h3>
+            <div class="card h-100"><div class="card-body text-center">
+                <div style="font-size:.7rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--sf-muted);margin-bottom:.6rem;">Apify Cost</div>
+                <div style="font-family:var(--sf-serif);font-size:2.2rem;font-weight:500;line-height:1;letter-spacing:-.02em;">@_apifyUsd.ToString("C4")</div>
             </div></div>
         </div>
     </div>
 
-    <h2>Per stage</h2>
-    <table class="table table-sm">
-        <thead>
-            <tr><th>Stage</th><th class="text-end">Calls</th><th class="text-end">Prompt</th><th class="text-end">Completion</th><th class="text-end">Total tokens</th><th class="text-end">Est. cost</th></tr>
-        </thead>
-        <tbody>
-            @if (_perStage!.Count == 0)
-            {
-                <tr><td colspan="6"><em>No calls in this window.</em></td></tr>
-            }
-            @foreach (var s in _perStage!)
-            {
-                <tr>
-                    <td>@s.Stage</td>
-                    <td class="text-end">@s.Calls</td>
-                    <td class="text-end">@s.PromptTokens.ToString("N0")</td>
-                    <td class="text-end">@s.CompletionTokens.ToString("N0")</td>
-                    <td class="text-end">@s.TotalTokens.ToString("N0")</td>
-                    <td class="text-end">@s.EstimatedCost.ToString("C4")</td>
-                </tr>
-            }
-        </tbody>
-    </table>
+    <h2 class="h5 mb-2">Per stage</h2>
+    <div class="card mb-4"><div class="card-body p-0">
+        <table class="table table-sm m-0 mx-1">
+            <thead>
+                <tr><th>Stage</th><th class="text-end">Calls</th><th class="text-end">Prompt</th><th class="text-end">Completion</th><th class="text-end">Total tokens</th><th class="text-end">Est. cost</th></tr>
+            </thead>
+            <tbody>
+                @if (_perStage!.Count == 0)
+                {
+                    <tr><td colspan="6"><em>No calls in this window.</em></td></tr>
+                }
+                @foreach (var s in _perStage!)
+                {
+                    <tr>
+                        <td>@s.Stage</td>
+                        <td class="text-end">@s.Calls</td>
+                        <td class="text-end">@s.PromptTokens.ToString("N0")</td>
+                        <td class="text-end">@s.CompletionTokens.ToString("N0")</td>
+                        <td class="text-end">@s.TotalTokens.ToString("N0")</td>
+                        <td class="text-end">@s.EstimatedCost.ToString("C4")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div></div>
 
-    <h2>Per provider</h2>
-    <table class="table table-sm">
-        <thead>
-            <tr><th>Provider</th><th class="text-end">Calls</th><th class="text-end">Prompt</th><th class="text-end">Completion</th><th class="text-end">Total tokens</th><th class="text-end">Est. cost</th></tr>
-        </thead>
-        <tbody>
-            @if (_perProvider!.Count == 0)
-            {
-                <tr><td colspan="6"><em>No calls in this window.</em></td></tr>
-            }
-            @foreach (var p in _perProvider!)
-            {
-                <tr>
-                    <td>
-                        @p.Provider
-                        @if (p.IsLocal)
-                        {
-                            <span class="badge bg-secondary">local</span>
-                        }
-                    </td>
-                    <td class="text-end">@p.Calls</td>
-                    <td class="text-end">@p.PromptTokens.ToString("N0")</td>
-                    <td class="text-end">@p.CompletionTokens.ToString("N0")</td>
-                    <td class="text-end">@p.TotalTokens.ToString("N0")</td>
-                    <td class="text-end">@p.EstimatedCost.ToString("C4")</td>
-                </tr>
-            }
-        </tbody>
-    </table>
+    <h2 class="h5 mb-2">Per provider</h2>
+    <div class="card mb-4"><div class="card-body p-0">
+        <table class="table table-sm m-0 mx-1">
+            <thead>
+                <tr><th>Provider</th><th class="text-end">Calls</th><th class="text-end">Prompt</th><th class="text-end">Completion</th><th class="text-end">Total tokens</th><th class="text-end">Est. cost</th></tr>
+            </thead>
+            <tbody>
+                @if (_perProvider!.Count == 0)
+                {
+                    <tr><td colspan="6"><em>No calls in this window.</em></td></tr>
+                }
+                @foreach (var p in _perProvider!)
+                {
+                    <tr>
+                        <td>
+                            @p.Provider
+                            @if (p.IsLocal)
+                            {
+                                <span class="badge bg-secondary">local</span>
+                            }
+                        </td>
+                        <td class="text-end">@p.Calls</td>
+                        <td class="text-end">@p.PromptTokens.ToString("N0")</td>
+                        <td class="text-end">@p.CompletionTokens.ToString("N0")</td>
+                        <td class="text-end">@p.TotalTokens.ToString("N0")</td>
+                        <td class="text-end">@p.EstimatedCost.ToString("C4")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div></div>
 }
 else
 {
